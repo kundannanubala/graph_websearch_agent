@@ -248,3 +248,18 @@ router_guided_json = {
     "required": ["next_agent"]
 }
 
+keyword_researcher_prompt_template = """
+You are a keyword phrase researcher. Your task is to analyze the text content provided and extract key phrases and terms 
+that are most relevant to the research question. Use natural language processing techniques to identify these key phrases.
+
+Here is the text content to analyze:
+Text Content: {text_content}
+
+Your response must take the following JSON format:
+
+    "key_phrases": ["List of extracted key phrases"],
+    "context": "Brief context or explanation of how these key phrases relate to the research question"
+
+Current date and time:
+{datetime}
+"""

@@ -1,9 +1,8 @@
 planner_prompt_template = """
-You are a planner. Your responsibility is to create a comprehensive plan to help your team answer a research question. 
-Questions may vary from simple to complex, multi-step queries. Your plan should provide appropriate guidance for your 
-team to use an internet search engine effectively.
+You are a planner. Your responsibility is to create a comprehensive plan to help your team research keyword phrases.
+Your plan should provide appropriate guidance for your team to use various keyword research tools effectively.
 
-Focus on highlighting the most relevant search term to start with, as another team member will use your suggestions 
+Focus on highlighting the most relevant keyword phrases to start with, as another team member will use your suggestions 
 to search for relevant information.
 
 If you receive feedback, you must adjust your plan accordingly. Here is the feedback received:
@@ -14,11 +13,11 @@ Current date and time:
 
 Your response must take the following json format:
 
-    "search_term": "The most relevant search term to start with"
-    "overall_strategy": "The overall strategy to guide the search process"
-    "additional_information": "Any additional information to guide the search including other search terms or filters"
-
+    "search_term": "The most relevant keyword phrase to start with"
+    "overall_strategy": "The overall strategy to guide the keyword research process"
+    "additional_information": "Any additional information to guide the search including other keyword phrases or filters"
 """
+
 
 planner_guided_json = {
     "type": "object",
@@ -41,12 +40,12 @@ planner_guided_json = {
 
 
 selector_prompt_template = """
-You are a selector. You will be presented with a search engine results page containing a list of potentially relevant 
-search results. Your task is to read through these results, select the most relevant one, and provide a comprehensive 
+You are a selector. You will be presented with the output of a keyword research tool containing a list of potentially relevant 
+sources for keyword phrase research. Your task is to read through these results, select the most relevant one, and provide a comprehensive 
 reason for your selection.
 
-here is the search engine results page:
-{serp}
+Here are the keyword research results:
+{keyword_research_results}
 
 Return your findings in the following json format:
 
@@ -54,17 +53,19 @@ Return your findings in the following json format:
     "description": "A brief description of the page",
     "reason_for_selection": "Why you selected this page"
 
-
 Adjust your selection based on any feedback received:
 Feedback: {feedback}
 
 Here are your previous selections:
 {previous_selections}
+
 Consider this information when making your new selection.
 
 Current date and time:
 {datetime}
 """
+
+
 
 selector_guided_json = {
     "type": "object",
@@ -248,18 +249,4 @@ router_guided_json = {
     "required": ["next_agent"]
 }
 
-keyword_researcher_prompt_template = """
-You are a keyword phrase researcher. Your task is to analyze the text content provided and extract key phrases and terms 
-that are most relevant to the research question. Use natural language processing techniques to identify these key phrases.
 
-Here is the text content to analyze:
-Text Content: {text_content}
-
-Your response must take the following JSON format:
-
-    "key_phrases": ["List of extracted key phrases"],
-    "context": "Brief context or explanation of how these key phrases relate to the research question"
-
-Current date and time:
-{datetime}
-"""

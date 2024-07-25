@@ -98,17 +98,18 @@ class PlannerAgent(Agent):
         return self.state
 
 class SelectorAgent(Agent):
-    def invoke(self, research_question, prompt=selector_prompt_template, feedback=None, previous_selections=None, serp=None):
+    def invoke(self, research_question, prompt=selector_prompt_template, feedback=None, previous_selections=None, keyword_research_results=None):
         feedback_value = feedback() if callable(feedback) else feedback
         previous_selections_value = previous_selections() if callable(previous_selections) else previous_selections
 
         feedback_value = check_for_content(feedback_value)
         previous_selections_value = check_for_content(previous_selections_value)
+        keyword_research_results_value = keyword_research_results() if callable(keyword_research_results) else keyword_research_results
 
         selector_prompt = prompt.format(
             feedback=feedback_value,
             previous_selections=previous_selections_value,
-            serp=serp().content,
+            keyword_research_results=keyword_research_results_value.content,
             datetime=get_current_utc_datetime()
         )
 
@@ -124,6 +125,7 @@ class SelectorAgent(Agent):
         print(colored(f"selector 🧑🏼‍💻: {response}", 'green'))
         self.update_state("selector_response", response)
         return self.state
+
 
 class ReporterAgent(Agent):
     def invoke(self, research_question, prompt=reporter_prompt_template, feedback=None, previous_reports=None, research=None):

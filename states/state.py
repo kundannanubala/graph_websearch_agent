@@ -13,9 +13,10 @@ class AgentGraphState(TypedDict):
     scraper_response: Annotated[list, add_messages]
     final_reports: Annotated[list, add_messages]
     end_chain: Annotated[list, add_messages]
+    keyword_research_response: Annotated[list, add_messages]  # New addition for keyword research responses
 
 # Define the nodes in the agent graph
-def get_agent_graph_state(state:AgentGraphState, state_key:str):
+def get_agent_graph_state(state: AgentGraphState, state_key: str):
     if state_key == "planner_all":
         return state["planner_response"]
     elif state_key == "planner_latest":
@@ -23,6 +24,14 @@ def get_agent_graph_state(state:AgentGraphState, state_key:str):
             return state["planner_response"][-1]
         else:
             return state["planner_response"]
+    
+    elif state_key == "keyword_research_all":
+        return state["keyword_research_response"]
+    elif state_key == "keyword_research_latest":
+        if state["keyword_research_response"]:
+            return state["keyword_research_response"][-1]
+        else:
+            return state["keyword_research_response"]
     
     elif state_key == "selector_all":
         return state["selector_response"]
@@ -68,7 +77,7 @@ def get_agent_graph_state(state:AgentGraphState, state_key:str):
         return None
     
 state = {
-    "research_question":"",
+    "research_question": "",
     "planner_response": [],
     "selector_response": [],
     "reporter_response": [],
@@ -77,5 +86,6 @@ state = {
     "serper_response": [],
     "scraper_response": [],
     "final_reports": [],
-    "end_chain": []
+    "end_chain": [],
+    "keyword_research_response": []  # New addition for keyword research responses
 }

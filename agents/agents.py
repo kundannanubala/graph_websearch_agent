@@ -8,12 +8,15 @@ from models.vllm_models import VllmJSONModel, VllmModel
 from models.groq_models import GroqModel, GroqJSONModel
 from models.claude_models import ClaudModel, ClaudJSONModel
 from models.gemini_models import GeminiModel, GeminiJSONModel
+from langchain_core.messages import HumanMessage
+import json
 from prompts.prompts import (
     planner_prompt_template,
-    selector_prompt_template,
-    reporter_prompt_template,
+    summarization_prompt_template,
     reviewer_prompt_template,
-    router_prompt_template
+    router_prompt_template,
+    keyword_filter_prompt_template,
+    report_generation_prompt_template
 )
 from utils.helper_functions import get_current_utc_datetime, check_for_content
 from states.state import AgentGraphState
@@ -75,7 +78,7 @@ class Agent:
         self.state = {**self.state, key: value}
 
 class PlannerAgent(Agent):
-    def invoke(self, research_question, prompt=planner_prompt_template, feedback=None):
+    def invoke(self, feedback=None, prompt=planner_prompt_template):
         feedback_value = feedback() if callable(feedback) else feedback
         feedback_value = check_for_content(feedback_value)
 
@@ -86,7 +89,7 @@ class PlannerAgent(Agent):
 
         messages = [
             {"role": "system", "content": planner_prompt},
-            {"role": "user", "content": f"research question: {research_question}"}
+            {"role": "user", "content": "Begin planning the RSS feed processing tasks."}
         ]
 
         llm = self.get_llm()
@@ -94,127 +97,161 @@ class PlannerAgent(Agent):
         response = ai_msg.content
 
         self.update_state("planner_response", response)
-        print(colored(f"Planner 👩🏿‍💻: {response}", 'cyan'))
+        with open("D:/VentureInternship/response.txt", "w") as file:
+            file.write(f"Planner: {response}")
+
         return self.state
+    
 
-class SelectorAgent(Agent):
-    def invoke(self, research_question, prompt=selector_prompt_template, feedback=None, previous_selections=None, keyword_research_results=None):
-        feedback_value = feedback() if callable(feedback) else feedback
-        previous_selections_value = previous_selections() if callable(previous_selections) else previous_selections
+class KeywordFilterAgent(Agent):
+    def invoke(self, articles, keywords, prompt=keyword_filter_prompt_template):
+        articles_value = articles() if callable(articles) else articles
+        keywords_value = keywords() if callable(keywords) else keywords
 
-        feedback_value = check_for_content(feedback_value)
-        previous_selections_value = check_for_content(previous_selections_value)
-        keyword_research_results_value = keyword_research_results() if callable(keyword_research_results) else keyword_research_results
+        # Extract content from HumanMessage objects
+        articles_content = []
+        for article in articles_value:
+            if isinstance(article, HumanMessage):
+                article_data = json.loads(article.content)
+                articles_content.extend(article_data['articles'])
 
-        selector_prompt = prompt.format(
-            feedback=feedback_value,
-            previous_selections=previous_selections_value,
-            keyword_research_results=keyword_research_results_value.content,
+        # Convert articles to a string format for the prompt
+        articles_str = " ".join([f"Title: {article['title']} Summary: {article['summary']}" for article in articles_content])
+
+        keyword_filter_prompt = prompt.format(
+            articles=articles_str,
+            keywords=keywords_value,
             datetime=get_current_utc_datetime()
         )
 
         messages = [
-            {"role": "system", "content": selector_prompt},
-            {"role": "user", "content": f"research question: {research_question}"}
+            {"role": "system", "content": keyword_filter_prompt},
+            {"role": "user", "content": "Filter the articles based on the specified keywords."}
         ]
 
         llm = self.get_llm()
         ai_msg = llm.invoke(messages)
         response = ai_msg.content
 
-        print(colored(f"selector 🧑🏼‍💻: {response}", 'green'))
-        self.update_state("selector_response", response)
+        self.update_state("keyword_filter_response", response)
+        with open("D:/VentureInternship/response.txt", "a") as file:
+            file.write(f"Keyword Filter: {response}")
         return self.state
 
-
-class ReporterAgent(Agent):
-    def invoke(self, research_question, prompt=reporter_prompt_template, feedback=None, previous_reports=None, research=None):
+class SummarizationAgent(Agent):
+    def invoke(self, filtered_articles, feedback=None, prompt=summarization_prompt_template):
+      
         feedback_value = feedback() if callable(feedback) else feedback
-        previous_reports_value = previous_reports() if callable(previous_reports) else previous_reports
-        research_value = research() if callable(research) else research
-
+        filtered_articles_value = filtered_articles() if callable(filtered_articles) else filtered_articles
         feedback_value = check_for_content(feedback_value)
-        previous_reports_value = check_for_content(previous_reports_value)
-        research_value = check_for_content(research_value)
-        
-        reporter_prompt = prompt.format(
+
+        # Extract content from HumanMessage objects
+        articles_content = []
+        for article in filtered_articles_value:
+            if isinstance(article, HumanMessage):
+                article_data = json.loads(article.content)
+                articles_content.extend(article_data['articles'])
+
+        # Convert articles to a string format for the prompt
+        articles_str = " ".join([f"Title: {article['title']} Summary: {article['summary']}" for article in articles_content])
+
+        summarization_prompt = prompt.format(
+            filtered_articles=articles_str,
             feedback=feedback_value,
-            previous_reports=previous_reports_value,
-            datetime=get_current_utc_datetime(),
-            research=research_value
+            datetime=get_current_utc_datetime()
         )
 
         messages = [
-            {"role": "system", "content": reporter_prompt},
-            {"role": "user", "content": f"research question: {research_question}"}
+            {"role": "system", "content": summarization_prompt},
+            {"role": "user", "content": "Summarize the filtered RSS feed articles."}
         ]
 
-        llm = self.get_llm(json_model=False)
+        llm = self.get_llm()
         ai_msg = llm.invoke(messages)
         response = ai_msg.content
 
-        print(colored(f"Reporter 👨‍💻: {response}", 'yellow'))
-        self.update_state("reporter_response", response)
+        self.update_state("summarization_response", response)
+        
+        with open("D:/VentureInternship/response.txt", "a") as file:
+            file.write(f"Summarizer: {response}\n")
         return self.state
 
-class ReviewerAgent(Agent):
-    def invoke(self, research_question, prompt=reviewer_prompt_template, reporter=None, feedback=None):
-        reporter_value = reporter() if callable(reporter) else reporter
-        feedback_value = feedback() if callable(feedback) else feedback
 
-        reporter_value = check_for_content(reporter_value)
+class ReviewerAgent(Agent):
+    def invoke(self, summaries, prompt=reviewer_prompt_template, feedback=None,keywords=None):
+        feedback_value = feedback() if callable(feedback) else feedback
+        summaries_value = summaries() if callable(summaries) else summaries
         feedback_value = check_for_content(feedback_value)
-        
+
         reviewer_prompt = prompt.format(
-            reporter=reporter_value,
-            state=self.state,
+            summaries=summaries_value,
+            keywords=keywords,
             feedback=feedback_value,
             datetime=get_current_utc_datetime(),
+            state=self.state
         )
 
         messages = [
             {"role": "system", "content": reviewer_prompt},
-            {"role": "user", "content": f"research question: {research_question}"}
+            {"role": "user", "content": "Review the summarized articles for accuracy and relevance."}
         ]
 
         llm = self.get_llm()
         ai_msg = llm.invoke(messages)
         response = ai_msg.content
 
-        print(colored(f"Reviewer 👩🏽‍⚖️: {response}", 'magenta'))
         self.update_state("reviewer_response", response)
+        with open("D:/VentureInternship/response.txt", "a") as file:
+            file.write(f"Reviewer: {response}\n")
         return self.state
-    
+
+
 class RouterAgent(Agent):
-    def invoke(self, feedback=None, research_question=None, prompt=router_prompt_template):
+    def invoke(self, feedback,prompt=router_prompt_template):
         feedback_value = feedback() if callable(feedback) else feedback
         feedback_value = check_for_content(feedback_value)
 
-        router_prompt = prompt.format(feedback=feedback_value)
+        router_prompt = prompt.format(
+            feedback=feedback_value
+        )
 
         messages = [
             {"role": "system", "content": router_prompt},
-            {"role": "user", "content": f"research question: {research_question}"}
+            {"role": "user", "content": f"Route the conversation based on the reviewer's feedback."}
         ]
 
         llm = self.get_llm()
         ai_msg = llm.invoke(messages)
         response = ai_msg.content
 
-        print(colored(f"Router 🧭: {response}", 'blue'))
         self.update_state("router_response", response)
+        with open("D:/VentureInternship/response.txt", "a") as file:
+            file.write(f"Router: {response}\n")
         return self.state
 
-class FinalReportAgent(Agent):
-    def invoke(self, final_response=None):
-        final_response_value = final_response() if callable(final_response) else final_response
-        response = final_response_value.content
+class ReportGenerationAgent(Agent):
+    def invoke(self, summaries, feedback=None, prompt=report_generation_prompt_template):
+        feedback_value = feedback() if callable(feedback) else feedback
+        summaries_value = summaries() if callable(summaries) else summaries
+        feedback_value = check_for_content(feedback_value)
 
-        print(colored(f"Final Report 📝: {response}", 'blue'))
-        self.update_state("final_reports", response)
+        report_generation_prompt = prompt.format(
+            summaries=summaries_value,
+            feedback=feedback_value,
+            datetime=get_current_utc_datetime()
+        )
+
+        messages = [
+            {"role": "system", "content": report_generation_prompt},
+            {"role": "user", "content": "Generate the comprehensive report based on the summarized articles."}
+        ]
+
+        llm = self.get_llm()
+        ai_msg = llm.invoke(messages)
+        response = ai_msg.content
+
+        self.update_state("final_report", response)
+        with open("D:/VentureInternship/response.txt", "a") as file:
+            file.write(f"Report Generator: {response}\n")
         return self.state
 
-class EndNodeAgent(Agent):
-    def invoke(self):
-        self.update_state("end_chain", "end_chain")
-        return self.state

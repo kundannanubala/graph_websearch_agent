@@ -31,7 +31,16 @@ if __name__ == "__main__":
         if query.lower() == "exit":
             break
 
-        dict_inputs = {"research_question": query}
+        rss_urls = [
+        "https://rss.app/feeds/PfSPW1PZmIDrjC8u.xml"
+    ]
+
+        keywords = ["tokenization", "web3", "RWA", "AI", "Biodiversity", "nature based carbon credits"]
+        
+        dict_inputs = {
+            "rss_urls": rss_urls,
+            "keywords": keywords
+        }
         # thread = {"configurable": {"thread_id": "4"}}
         limit = {"recursion_limit": iterations}
 
@@ -47,7 +56,8 @@ if __name__ == "__main__":
             dict_inputs, limit
             ):
             if verbose:
-                print("\nState Dictionary:", event)
+                # print("\nState Dictionary:", event)
+                print('')
             else:
                 print("\n")
 

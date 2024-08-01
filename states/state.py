@@ -3,20 +3,22 @@ from langgraph.graph.message import add_messages
 
 # Define the state object for the agent graph
 class AgentGraphState(TypedDict):
-    research_question: str
+    rss_urls: list[str]
+    keywords: list[str]
     planner_response: Annotated[list, add_messages]
-    selector_response: Annotated[list, add_messages]
-    reporter_response: Annotated[list, add_messages]
+    xml_parser_response: Annotated[list, add_messages]
+    keyword_filter_response: Annotated[list, add_messages]
+    summarization_response: Annotated[list, add_messages]
     reviewer_response: Annotated[list, add_messages]
     router_response: Annotated[list, add_messages]
-    serper_response: Annotated[list, add_messages]
-    scraper_response: Annotated[list, add_messages]
-    final_reports: Annotated[list, add_messages]
-    end_chain: Annotated[list, add_messages]
-    keyword_research_response: Annotated[list, add_messages]  # New addition for keyword research responses
+    final_report: Annotated[list, add_messages]
 
-# Define the nodes in the agent graph
+# Define the function to get agent graph state
 def get_agent_graph_state(state: AgentGraphState, state_key: str):
+    if state_key == "rss_urls":
+        return state["rss_urls"]
+    if state_key == "keywords":
+        return state["keywords"]
     if state_key == "planner_all":
         return state["planner_response"]
     elif state_key == "planner_latest":
@@ -24,31 +26,26 @@ def get_agent_graph_state(state: AgentGraphState, state_key: str):
             return state["planner_response"][-1]
         else:
             return state["planner_response"]
-    
-    elif state_key == "keyword_research_all":
-        return state["keyword_research_response"]
-    elif state_key == "keyword_research_latest":
-        if state["keyword_research_response"]:
-            return state["keyword_research_response"][-1]
+
+    elif state_key == "xml_parser_response":
+        return state["xml_parser_response"]
+
+    elif state_key == "keyword_filter_all":
+        return state["keyword_filter_response"]
+    elif state_key == "keyword_filter_latest":
+        if state["keyword_filter_response"]:
+            return state["keyword_filter_response"][-1]
         else:
-            return state["keyword_research_response"]
-    
-    elif state_key == "selector_all":
-        return state["selector_response"]
-    elif state_key == "selector_latest":
-        if state["selector_response"]:
-            return state["selector_response"][-1]
+            return state["keyword_filter_response"]
+
+    elif state_key == "summarization_all":
+        return state["summarization_response"]
+    elif state_key == "summarization_latest":
+        if state["summarization_response"]:
+            return state["summarization_response"][-1]
         else:
-            return state["selector_response"]
-    
-    elif state_key == "reporter_all":
-        return state["reporter_response"]
-    elif state_key == "reporter_latest":
-        if state["reporter_response"]:
-            return state["reporter_response"][-1]
-        else:
-            return state["reporter_response"]
-    
+            return state["summarization_response"]
+
     elif state_key == "reviewer_all":
         return state["reviewer_response"]
     elif state_key == "reviewer_latest":
@@ -56,36 +53,35 @@ def get_agent_graph_state(state: AgentGraphState, state_key: str):
             return state["reviewer_response"][-1]
         else:
             return state["reviewer_response"]
-        
-    elif state_key == "serper_all":
-        return state["serper_response"]
-    elif state_key == "serper_latest":
-        if state["serper_response"]:
-            return state["serper_response"][-1]
+
+    elif state_key == "router_all":
+        return state["router_response"]
+    elif state_key == "router_latest":
+        if state["router_response"]:
+            return state["router_response"][-1]
         else:
-            return state["serper_response"]
-    
-    elif state_key == "scraper_all":
-        return state["scraper_response"]
-    elif state_key == "scraper_latest":
-        if state["scraper_response"]:
-            return state["scraper_response"][-1]
+            return state["router_response"]
+
+    elif state_key == "final_report_all":
+        return state["final_report"]
+    elif state_key == "final_report_latest":
+        if state["final_report"]:
+            return state["final_report"][-1]
         else:
-            return state["scraper_response"]
-        
+            return state["final_report"]
+
     else:
         return None
-    
+
+# Initialize the state
 state = {
-    "research_question": "",
+    "rss_urls": [],
+    "keywords": [],
     "planner_response": [],
-    "selector_response": [],
-    "reporter_response": [],
+    "xml_parser_response": [],
+    "keyword_filter_response": [],
+    "summarization_response": [],
     "reviewer_response": [],
     "router_response": [],
-    "serper_response": [],
-    "scraper_response": [],
-    "final_reports": [],
-    "end_chain": [],
-    "keyword_research_response": []  # New addition for keyword research responses
+    "final_report": [],
 }

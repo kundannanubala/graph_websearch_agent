@@ -53,8 +53,31 @@ class ChatWorkflow:
     def invoke_workflow(self, message):
         if not self.workflow:
             return "Workflow has not been built yet. Please update settings first."
+        rss_urls = [
+        "https://rss.app/feeds/PfSPW1PZmIDrjC8u.xml",
+        "https://rss.app/feeds/bovDvfqaIz2KoDdw.xml",
+        "https://rss.app/feeds/qKjOEYXW4oEP6xYP.xml",
+        "https://rss.app/feeds/56HKOZAvi3Ym1tm7.xml",
+        "https://rss.app/feeds/uZLwiQhErv8b4yEK.xml",
+        "https://rss.app/feeds/K2enb0duBnv1BgXn.xml",
+        "https://rss.app/feeds/YqqGCKRoUgtzQxse.xml",
+        "https://rss.app/feeds/AlOYwfMt50xeeAGX.xml",
+        "https://rss.app/feeds/4zjgvZfHGaKwST6D.xml",
+        "https://rss.app/feeds/kiUZxHmxtC36zRK8.xml",
+        "https://rss.app/feeds/7RTOJmMmRAUs6sXX.xml",
+        "https://rss.app/feeds/yNLjX7f9gjYpz83D.xml",
+        "https://rss.app/feeds/hvRNY4LdKfAGnz2r.xml",
+        "https://rss.app/feeds/UhvBRMGqNUHB1WtF.xml",
+        "https://rss.app/feeds/efZhUMWNNHbxolMl.xml",
+        "https://rss.app/feeds/lNrrcxPKFtlKa1eY.xml"
+    ]
+
+        keywords = ["tokenization", "web3", "RWA", "AI", "Biodiversity", "nature based carbon credits"]
         
-        dict_inputs = {"research_question": message.content}
+        dict_inputs = {
+            "rss_urls": rss_urls,
+            "keywords": keywords
+        }
         limit = {"recursion_limit": self.recursion_limit}
         reporter_state = None
 

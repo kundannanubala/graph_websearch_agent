@@ -103,6 +103,11 @@ class PlannerAgent(Agent):
         return self.state
     
 
+from datetime import datetime
+from langchain.schema import HumanMessage
+from langchain.output_parsers import StructuredOutputParser, ResponseSchema
+from prompts.prompts import keyword_filter_prompt_template
+
 class KeywordFilterAgent(Agent):
     def invoke(self, articles, keywords, prompt=keyword_filter_prompt_template):
         articles_value = articles() if callable(articles) else articles
@@ -114,68 +119,143 @@ class KeywordFilterAgent(Agent):
             if isinstance(article, HumanMessage):
                 article_data = json.loads(article.content)
                 articles_content.extend(article_data['articles'])
+            elif isinstance(article, dict):
+                articles_content.append(article)
 
-        # Convert articles to a string format for the prompt
-        articles_str = " ".join([f"Title: {article['title']} Summary: {article['summary']}" for article in articles_content])
+        filtered_articles = []
 
-        keyword_filter_prompt = prompt.format(
-            articles=articles_str,
-            keywords=keywords_value,
-            datetime=get_current_utc_datetime()
-        )
+        for article in articles_content:
+            article_str = json.dumps(article)
+            current_datetime = get_current_utc_datetime()
+            keyword_filter_prompt = prompt.format(
+                articles=article_str,
+                keywords=keywords_value,
+                datetime=current_datetime
+            )
+            
+            # Define the response schema
+            article_schema = ResponseSchema(name="article", description="A filtered article")
+            response_schemas = [
+                ResponseSchema(
+                    name="filtered_articles",
+                    description="List of filtered articles",
+                    type="array",
+                    items=article_schema
+                )
+            ]
 
-        messages = [
-            {"role": "system", "content": keyword_filter_prompt},
-            {"role": "user", "content": "Filter the articles based on the specified keywords."}
-        ]
+            output_parser = StructuredOutputParser.from_response_schemas(response_schemas)
+            format_instructions = output_parser.get_format_instructions()
 
-        llm = self.get_llm()
-        ai_msg = llm.invoke(messages)
-        response = ai_msg.content
+            messages = [
+                {"role": "system", "content": keyword_filter_prompt},
+                {"role": "system", "content": f"Output Format: {format_instructions}"},
+                {"role": "user", "content": "Filter the article based on the specified keywords."}
+            ]
 
-        self.update_state("keyword_filter_response", response)
+            llm = self.get_llm()
+            ai_msg = llm.invoke(messages)
+            response = ai_msg.content
+
+            try:
+                parsed_response = output_parser.parse(response)
+                # Post-process to ensure data accuracy
+                filtered_article = self.post_process_article(parsed_response['filtered_articles'], article, keywords_value)
+                if filtered_article:
+                    filtered_articles.append(filtered_article)
+            except Exception as e:
+                error_msg = f"Error parsing response: {str(e)}"
+                self.update_state("keyword_filter_error", error_msg)
+                with open("D:/VentureInternship/error_log.txt", "a") as file:
+                    file.write(f"\nError: {error_msg}")
+                continue
+
+        final_response = {"filtered_articles": filtered_articles}
+        human_message = HumanMessage(role="system", content=json.dumps(final_response))
+        self.update_state("keyword_filter_response", human_message)
+
         with open("D:/VentureInternship/response.txt", "a") as file:
-            file.write(f"Keyword Filter: {response}")
+            file.write(f"\nKeyword Filter: {json.dumps(final_response, indent=2)}")
+
         return self.state
 
+    def post_process_article(self, filtered_articles, original_article, keywords):
+        for filtered_article in filtered_articles:
+            if filtered_article['title'].lower() == original_article['title'].lower():
+                for keyword in keywords:
+                    if keyword.lower() in original_article['title'].lower() or any(keyword.lower() in word.lower() for word in original_article['content'].split()):
+                        return {
+                            "title": original_article['title'],
+                            "link": original_article['link'],
+                            "author": original_article['author'],
+                            "published_date": original_article['published_date'],
+                            "content": original_article['content']
+                        }
+        return None
 class SummarizationAgent(Agent):
-    def invoke(self, filtered_articles, feedback=None, prompt=summarization_prompt_template):
-      
+    def invoke(self, filtered_articles, keywords, feedback=None, prompt=summarization_prompt_template):
         feedback_value = feedback() if callable(feedback) else feedback
         filtered_articles_value = filtered_articles() if callable(filtered_articles) else filtered_articles
+        keywords_value = keywords() if callable(keywords) else keywords
         feedback_value = check_for_content(feedback_value)
 
-        # Extract content from HumanMessage objects
+        # Extract content from HumanMessage object
         articles_content = []
-        for article in filtered_articles_value:
-            if isinstance(article, HumanMessage):
-                article_data = json.loads(article.content)
-                articles_content.extend(article_data['articles'])
+        if isinstance(filtered_articles_value, HumanMessage):
+            try:
+                message_content = json.loads(filtered_articles_value.content)
+                articles_content = message_content.get('filtered_articles', [])
+            except json.JSONDecodeError:
+                print(f"Failed to parse filtered_articles_value content as JSON: {filtered_articles_value.content}")
+        else:
+            print(f"Unexpected type for filtered_articles_value: {type(filtered_articles_value)}")
 
-        # Convert articles to a string format for the prompt
-        articles_str = " ".join([f"Title: {article['title']} Summary: {article['summary']}" for article in articles_content])
+        print("Articles Content:", articles_content)  # Debugging line
 
-        summarization_prompt = prompt.format(
-            filtered_articles=articles_str,
-            feedback=feedback_value,
-            datetime=get_current_utc_datetime()
-        )
+        summaries = []
+        for article in articles_content:
+            article_str = json.dumps(article)
+            print(article_str, "\n")
+            summarization_prompt = prompt.format(
+                filtered_articles=article_str,
+                keywords=keywords_value,
+                feedback=feedback_value,
+                datetime=get_current_utc_datetime()
+            )
 
-        messages = [
-            {"role": "system", "content": summarization_prompt},
-            {"role": "user", "content": "Summarize the filtered RSS feed articles."}
-        ]
+            messages = [
+                {"role": "system", "content": summarization_prompt},
+                {"role": "user", "content": "Summarize the filtered RSS feed article."}
+            ]
 
-        llm = self.get_llm()
-        ai_msg = llm.invoke(messages)
-        response = ai_msg.content
+            llm = self.get_llm()
+            ai_msg = llm.invoke(messages)
+            response = ai_msg.content
+            print(response)
 
-        self.update_state("summarization_response", response)
-        
+            try:
+                # Parse the response to extract the summary
+                response_data = json.loads(response)
+                if 'summaries' in response_data and len(response_data['summaries']) > 0:
+                    summaries.extend(response_data['summaries'])
+                else:
+                    raise ValueError("No valid summaries found in the response")
+            except json.JSONDecodeError:
+                print(f"Failed to parse response as JSON: {response}")
+            except ValueError as e:
+                print(f"Error processing summary: {str(e)}")
+
+        final_response = {"summaries": summaries}
+        # Create a HumanMessage object with the final response
+        human_message_response = HumanMessage(content=json.dumps(final_response))
+
+        # Update the state with the HumanMessage object
+        self.update_state("summarization_response", human_message_response)
+
         with open("D:/VentureInternship/response.txt", "a") as file:
-            file.write(f"Summarizer: {response}\n")
-        return self.state
+            file.write(f"Summarizer: {json.dumps(final_response, indent=2)}\n")
 
+        return self.state
 
 class ReviewerAgent(Agent):
     def invoke(self, summaries, prompt=reviewer_prompt_template, feedback=None,keywords=None):

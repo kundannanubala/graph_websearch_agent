@@ -132,12 +132,10 @@ Your response must take the following JSON format exactly as specified:
 {{
     "filtered_articles": [
         {{
-            "title": "Title of the article",
-            "summary": "Summary of the article",
-            "link": "URL of the article",
-            "author": "Author of the article",
-            "published_date": "Published date of the article",
-            "image_url": "Image URL of the article"
+            "title": "Exact title of the article",
+            "link": "Exact link of the article",
+            "author": "Exact author of the article",
+            "published_date": "Exact published date of the article"
         }}
     ]
 }}
@@ -156,13 +154,9 @@ keyword_filter_guided_json = {
                         "type": "string",
                         "description": "Title of the article"
                     },
-                    "summary": {
-                        "type": "string",
-                        "description": "Summary of the article"
-                    },
                     "link": {
                         "type": "string",
-                        "description": "URL of the article"
+                        "description": "Link of the article"
                     },
                     "author": {
                         "type": "string",
@@ -172,12 +166,12 @@ keyword_filter_guided_json = {
                         "type": "string",
                         "description": "Published date of the article"
                     },
-                    "image_url": {
+                    "content": {
                         "type": "string",
-                        "description": "Image URL of the article"
+                        "description": "Content of the article"
                     }
                 },
-                "required": ["title", "summary", "link", "author", "published_date"]
+                "required": ["title", "link", "author", "published_date", "content"]
             }
         }
     },
@@ -186,14 +180,16 @@ keyword_filter_guided_json = {
 
 
 summarization_prompt_template = """
-You are a summarizer. Your task is to create concise summaries of the filtered articles from the RSS feeds based on the user-defined keywords.
+You are a summarizer. Your task is to create a concise summary of the filtered article from the RSS feed based entirely on the "content" of the article.
 
-Here are the filtered articles:
+Here is the filtered article:
 {filtered_articles}
 
-Generate a summary for each article. Ensure the summaries capture the key points and main ideas.
+Keywords to highlight: {keywords}
 
-Adjust your summaries based on any feedback received:
+Generate a summary for the article. Ensure the summary captures the key points and main ideas. Do not deviate from the relevant information in the content. Highlight the usage of the relevant keyword that the article is associated with.
+
+Adjust your summary based on any feedback received:
 Feedback: {feedback}
 
 Current date and time:
@@ -204,7 +200,7 @@ Your response must take the following json format:
     "summaries": [
         {{
             "title": "Title of the article",
-            "summary": "Concise summary of the article",
+            "summary": "Concise summary of the article, highlighting the relevant keyword",
             "source": "URL of the article"
         }}
     ]
@@ -225,7 +221,7 @@ summarization_guided_json = {
                     },
                     "summary": {
                         "type": "string",
-                        "description": "Concise summary of the article"
+                        "description": "Concise summary of the article, highlighting the relevant keyword"
                     },
                     "source": {
                         "type": "string",

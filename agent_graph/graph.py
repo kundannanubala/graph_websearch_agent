@@ -28,17 +28,73 @@ from prompts.prompts import (
 from tools.xml_parser_tool import xml_parser_tool  # Import the xml_parser_tool
 from tools.content_scraper_tool import content_scraper_tool  # Import the content_scraper_tool
 
+import json
+from langchain_core.messages import HumanMessage
+
 class OutputNode:
     def process(self, final_report):
         final_report_value = final_report() if callable(final_report) else final_report
-        
-        # Display or handle the final report as needed
-        with open("D:/VentureInternship/final_report.txt", "w") as file:
-            file.write(f"Final Report: {final_report_value}")
 
-        
-        # Assuming the final report needs to be returned or saved, we can return it here
-        return final_report_value
+        # Handle the case where final_report_value is None
+        if final_report_value is None:
+            error_message = "Error: Final report is None. No content to process."
+            print(error_message)
+            with open("D:/VentureInternship/final_report.txt", "w") as file:
+                file.write(error_message)
+            return error_message
+
+        # Extract content from HumanMessage object or use the value directly
+        if isinstance(final_report_value, HumanMessage):
+            report_content = final_report_value.content
+        else:
+            report_content = final_report_value
+
+        # Try to parse the content as JSON
+        try:
+            if isinstance(report_content, str):
+                report_data = json.loads(report_content)
+            elif isinstance(report_content, dict):
+                report_data = report_content
+            else:
+                raise ValueError(f"Unexpected report content type: {type(report_content)}")
+        except json.JSONDecodeError:
+            error_message = f"Failed to parse final_report content as JSON: {report_content}"
+            print(error_message)
+            with open("D:/VentureInternship/final_report.txt", "w") as file:
+                file.write(error_message)
+            return error_message
+
+        # Process the report content
+        human_readable_report = self.generate_human_readable_report(report_data)
+
+        # Write the human-readable report to a file
+        with open("D:/VentureInternship/final_report.txt", "w") as file:
+            file.write(human_readable_report)
+
+
+    def generate_human_readable_report(self, report_data):
+        human_readable_report = "Final Report\n\n"
+
+        if 'reports' in report_data and isinstance(report_data['reports'], list):
+            for index, report in enumerate(report_data['reports'], 1):
+                human_readable_report += f"Report {index}:\n"
+                human_readable_report += f"Introduction: {report.get('introduction', 'N/A')}\n\n"
+
+                article = report.get('article', {})
+                human_readable_report += f"Article: {article.get('title', 'N/A')}\n"
+                human_readable_report += f"Author: {article.get('author', 'N/A')}\n"
+                human_readable_report += f"Published Date: {article.get('published_date', 'N/A')}\n"
+                human_readable_report += f"Summary: {article.get('summary', 'N/A')}\n"
+                human_readable_report += f"Link: {article.get('link', 'N/A')}\n"
+                if 'image_url' in article:
+                    human_readable_report += f"Image URL: {article['image_url']}\n"
+
+                human_readable_report += f"\nConclusion: {report.get('conclusion', 'N/A')}\n\n"
+                human_readable_report += "-" * 50 + "\n\n"
+        else:
+            human_readable_report += "No reports found in the final report content."
+
+        return human_readable_report
 
 from states.state import AgentGraphState, get_agent_graph_state, state
 
@@ -156,6 +212,7 @@ def create_graph(server=None, model=None, stop=None, model_endpoint=None, temper
             model_endpoint=model_endpoint,
             temperature=temperature
         ).invoke(
+            articles=lambda: get_agent_graph_state(state=state, state_key="keyword_filter_latest"),
             summaries=lambda: get_agent_graph_state(state=state, state_key="summarization_latest"),
             feedback=lambda: get_agent_graph_state(state=state, state_key="reviewer_latest"),
             prompt=report_generation_prompt_template
@@ -164,7 +221,7 @@ def create_graph(server=None, model=None, stop=None, model_endpoint=None, temper
 
     graph.add_node(
         "output",
-        lambda state: OutputNode().process(get_agent_graph_state(state=state, state_key="final_report"))
+        lambda state: OutputNode().process(get_agent_graph_state(state=state, state_key="report_generation_response_latest"))
     )
 
     # Define the edges in the agent graph

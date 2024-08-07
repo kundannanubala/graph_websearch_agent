@@ -27,12 +27,13 @@ if __name__ == "__main__":
     verbose = False
 
     while True:
-        query = input("Enter Start to continue: ")
+        query = input("Enter to continue: ")
         if query.lower() == "exit":
             break
 
         rss_urls = [
-        "https://rss.app/feeds/PfSPW1PZmIDrjC8u.xml" #https://www.greenbiz.com/
+        # "https://rss.app/feeds/PfSPW1PZmIDrjC8u.xml" #https://www.greenbiz.com/
+        "https://rss.app/feeds/bovDvfqaIz2KoDdw.xml" #https://www.green.earth
     ]
 
         keywords = ["tokenization", "web3", "RWA", "AI", "Biodiversity", "nature based carbon credits"]

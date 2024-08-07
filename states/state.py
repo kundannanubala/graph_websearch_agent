@@ -12,7 +12,7 @@ class AgentGraphState(TypedDict):
     summarization_response: Annotated[list, add_messages]
     reviewer_response: Annotated[list, add_messages]
     router_response: Annotated[list, add_messages]
-    final_report: Annotated[list, add_messages]
+    report_generation_response: Annotated[list, add_messages]
 
 # Define the function to get agent graph state
 def get_agent_graph_state(state: AgentGraphState, state_key: str):
@@ -65,13 +65,13 @@ def get_agent_graph_state(state: AgentGraphState, state_key: str):
         else:
             return state["router_response"]
 
-    elif state_key == "final_report_all":
-        return state["final_report"]
-    elif state_key == "final_report_latest":
-        if state["final_report"]:
-            return state["final_report"][-1]
+    elif state_key == "report_generation_response_all":
+        return state["report_generation_response"]
+    elif state_key == "report_generation_response_latest":
+        if state["report_generation_response"]:
+            return state["report_generation_response"][-1]
         else:
-            return state["final_report"]
+            return state["report_generation_response"]
 
     else:
         return None
@@ -87,5 +87,5 @@ state = {
     "summarization_response": [],
     "reviewer_response": [],
     "router_response": [],
-    "final_report": [],
+    "report_generation_response": [],
 }

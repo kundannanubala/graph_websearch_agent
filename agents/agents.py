@@ -210,12 +210,12 @@ class SummarizationAgent(Agent):
         else:
             print(f"Unexpected type for filtered_articles_value: {type(filtered_articles_value)}")
 
-        print("Articles Content:", articles_content)  # Debugging line
+        #print("Articles Content:", articles_content)  # Debugging line
 
         summaries = []
         for article in articles_content:
             article_str = json.dumps(article)
-            print(article_str, "\n")
+            #print(article_str, "\n")
             summarization_prompt = prompt.format(
                 filtered_articles=article_str,
                 keywords=keywords_value,
@@ -231,7 +231,7 @@ class SummarizationAgent(Agent):
             llm = self.get_llm()
             ai_msg = llm.invoke(messages)
             response = ai_msg.content
-            print(response)
+            #print(response)
 
             try:
                 # Parse the response to extract the summary
@@ -257,14 +257,52 @@ class SummarizationAgent(Agent):
 
         return self.state
 
-class ReviewerAgent(Agent):
-    def invoke(self, summaries, prompt=reviewer_prompt_template, feedback=None,keywords=None):
-        feedback_value = feedback() if callable(feedback) else feedback
-        summaries_value = summaries() if callable(summaries) else summaries
-        feedback_value = check_for_content(feedback_value)
+import time
+import random
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from threading import Lock
 
+class TokenBucket:
+    def __init__(self, tokens, fill_rate):
+        self.capacity = tokens
+        self.tokens = tokens
+        self.fill_rate = fill_rate
+        self.last_check = time.time()
+        self.lock = Lock()
+
+    def get_token(self):
+        with self.lock:
+            now = time.time()
+            time_passed = now - self.last_check
+            self.tokens = min(self.capacity, self.tokens + time_passed * self.fill_rate)
+            self.last_check = now
+
+            if self.tokens >= 1:
+                self.tokens -= 1
+                return True
+            return False
+
+    def wait_for_token(self):
+        while not self.get_token():
+            time.sleep(0.1)
+
+class ReviewerAgent(Agent):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Adjust these values based on your API limits
+        self.rate_limiter = TokenBucket(tokens=30, fill_rate=0.5)  # 30 tokens per minute
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_exception_type(Exception)
+    )
+    def review_summary(self, summary, keywords, feedback_value, prompt):
+        self.rate_limiter.wait_for_token()
+
+        summary_str = json.dumps(summary)
         reviewer_prompt = prompt.format(
-            summaries=summaries_value,
+            summary=summary_str,
             keywords=keywords,
             feedback=feedback_value,
             datetime=get_current_utc_datetime(),
@@ -273,16 +311,53 @@ class ReviewerAgent(Agent):
 
         messages = [
             {"role": "system", "content": reviewer_prompt},
-            {"role": "user", "content": "Review the summarized articles for accuracy and relevance."}
+            {"role": "user", "content": "Review the summarized article for accuracy and relevance."}
         ]
 
         llm = self.get_llm()
         ai_msg = llm.invoke(messages)
         response = ai_msg.content
 
-        self.update_state("reviewer_response", response)
+        review_data = json.loads(response)
+        if 'review' in review_data:
+            return review_data['review']
+        else:
+            raise ValueError("No valid review found in the response")
+
+    def invoke(self, summaries, prompt=reviewer_prompt_template, feedback=None, keywords=None):
+        feedback_value = feedback() if callable(feedback) else feedback
+        summaries_value = summaries() if callable(summaries) else summaries
+        feedback_value = check_for_content(feedback_value)
+
+        # Extract content from HumanMessage object
+        summaries_content = []
+        if isinstance(summaries_value, HumanMessage):
+            try:
+                message_content = json.loads(summaries_value.content)
+                summaries_content = message_content.get('summaries', [])
+            except json.JSONDecodeError:
+                print(f"Failed to parse summaries_value content as JSON: {summaries_value.content}")
+        else:
+            print(f"Unexpected type for summaries_value: {type(summaries_value)}")
+
+        reviews = []
+        for summary in summaries_content:
+            try:
+                review = self.review_summary(summary, keywords, feedback_value, prompt)
+                reviews.append(review)
+                # Small random delay between reviews
+                time.sleep(random.uniform(0.5, 1))
+            except Exception as e:
+                print(f"Error processing review: {str(e)}")
+
+        final_response = {"reviews": reviews}
+        human_message_response = HumanMessage(content=json.dumps(final_response))
+
+        self.update_state("reviewer_response", human_message_response)
+
         with open("D:/VentureInternship/response.txt", "a") as file:
-            file.write(f"Reviewer: {response}\n")
+            file.write(f"Reviewer: {json.dumps(final_response, indent=2)}\n")
+
         return self.state
 
 
@@ -310,28 +385,75 @@ class RouterAgent(Agent):
         return self.state
 
 class ReportGenerationAgent(Agent):
-    def invoke(self, summaries, feedback=None, prompt=report_generation_prompt_template):
+    def invoke(self, articles, summaries, feedback=None, prompt=report_generation_prompt_template):
         feedback_value = feedback() if callable(feedback) else feedback
         summaries_value = summaries() if callable(summaries) else summaries
+        articles_value = articles() if callable(articles) else articles
         feedback_value = check_for_content(feedback_value)
 
-        report_generation_prompt = prompt.format(
-            summaries=summaries_value,
-            feedback=feedback_value,
-            datetime=get_current_utc_datetime()
-        )
+        # Extract content from HumanMessage object
+        summaries_content = []
+        articles_content = []
+        if isinstance(summaries_value, HumanMessage):
+            try:
+                message_content = json.loads(summaries_value.content)
+                summaries_content = message_content.get('summaries', [])
+            except json.JSONDecodeError:
+                print(f"Failed to parse summaries_value content as JSON: {summaries_value.content}")
+        else:
+            print(f"Unexpected type for summaries_value: {type(summaries_value)}")
 
-        messages = [
-            {"role": "system", "content": report_generation_prompt},
-            {"role": "user", "content": "Generate the comprehensive report based on the summarized articles."}
-        ]
+        if isinstance(articles_value, HumanMessage):
+            try:
+                message_content = json.loads(articles_value.content)
+                articles_content = message_content.get('filtered_articles', [])
+            except json.JSONDecodeError:
+                print(f"Failed to parse articles_value content as JSON: {articles_value.content}")
+        else:
+            print(f"Unexpected type for articles_value: {type(articles_value)}")
 
-        llm = self.get_llm()
-        ai_msg = llm.invoke(messages)
-        response = ai_msg.content
+        reports = []
+        for article, summary in zip(articles_content, summaries_content):
+            article_str = json.dumps(article)
+            summary_str = json.dumps(summary)
 
-        self.update_state("final_report", response)
+            report_generation_prompt = prompt.format(
+                article=article_str,
+                summary=summary_str,
+                feedback=feedback_value,
+                datetime=get_current_utc_datetime()
+            )
+
+            messages = [
+                {"role": "system", "content": report_generation_prompt},
+                {"role": "user", "content": "Generate a concise report based on the article and its summary."}
+            ]
+
+            llm = self.get_llm()
+            ai_msg = llm.invoke(messages)
+            response = ai_msg.content
+
+            try:
+                # Parse the response to extract the report
+                response_data = json.loads(response)
+                if 'report' in response_data:
+                    reports.append(response_data['report'])
+                else:
+                    raise ValueError("No valid report found in the response")
+            except json.JSONDecodeError:
+                print(f"Failed to parse response as JSON: {response}")
+            except ValueError as e:
+                print(f"Error processing report: {str(e)}")
+
+        final_response = {"reports": reports}
+        # Create a HumanMessage object with the final response
+        human_message_response = HumanMessage(content=json.dumps(final_response))
+
+        # Update the state with the HumanMessage object
+        self.update_state("report_generation_response", human_message_response)
+
         with open("D:/VentureInternship/response.txt", "a") as file:
-            file.write(f"Report Generator: {response}\n")
+            file.write(f"Report Generator: {json.dumps(final_response, indent=2)}\n")
+
         return self.state
 

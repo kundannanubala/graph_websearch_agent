@@ -193,7 +193,7 @@ class KeywordFilterAgent(Agent):
                         }
         return None
 class SummarizationAgent(Agent):
-    def invoke(self, filtered_articles, keywords, feedback=None, prompt=summarization_prompt_template):
+    def invoke(self, filtered_articles, keywords, feedback=None, prompt=summarization_prompt_template, batch_size=5):
         feedback_value = feedback() if callable(feedback) else feedback
         filtered_articles_value = filtered_articles() if callable(filtered_articles) else filtered_articles
         keywords_value = keywords() if callable(keywords) else keywords
@@ -210,46 +210,43 @@ class SummarizationAgent(Agent):
         else:
             print(f"Unexpected type for filtered_articles_value: {type(filtered_articles_value)}")
 
-        #print("Articles Content:", articles_content)  # Debugging line
+        all_summaries = []
 
-        summaries = []
-        for article in articles_content:
-            article_str = json.dumps(article)
-            #print(article_str, "\n")
+        # Process articles in batches
+        for i in range(0, len(articles_content), batch_size):
+            batch = articles_content[i:i+batch_size]
+            batch_str = json.dumps(batch)
+
             summarization_prompt = prompt.format(
-                filtered_articles=article_str,
+                filtered_articles=batch_str,
                 keywords=keywords_value,
                 feedback=feedback_value,
-                datetime=get_current_utc_datetime()
+                datetime=self.get_current_utc_datetime()
             )
 
             messages = [
                 {"role": "system", "content": summarization_prompt},
-                {"role": "user", "content": "Summarize the filtered RSS feed article."}
+                {"role": "user", "content": f"Summarize this batch of {len(batch)} articles."}
             ]
 
             llm = self.get_llm()
             ai_msg = llm.invoke(messages)
             response = ai_msg.content
-            #print(response)
 
             try:
-                # Parse the response to extract the summary
                 response_data = json.loads(response)
                 if 'summaries' in response_data and len(response_data['summaries']) > 0:
-                    summaries.extend(response_data['summaries'])
+                    all_summaries.extend(response_data['summaries'])
                 else:
-                    raise ValueError("No valid summaries found in the response")
+                    print(f"No valid summaries found in the response for batch {i//batch_size + 1}")
             except json.JSONDecodeError:
-                print(f"Failed to parse response as JSON: {response}")
+                print(f"Failed to parse response as JSON for batch {i//batch_size + 1}: {response}")
             except ValueError as e:
-                print(f"Error processing summary: {str(e)}")
+                print(f"Error processing summaries for batch {i//batch_size + 1}: {str(e)}")
 
-        final_response = {"summaries": summaries}
-        # Create a HumanMessage object with the final response
+        final_response = {"summaries": all_summaries}
         human_message_response = HumanMessage(content=json.dumps(final_response))
 
-        # Update the state with the HumanMessage object
         self.update_state("summarization_response", human_message_response)
 
         with open("D:/VentureInternship/response.txt", "a") as file:
@@ -257,76 +254,15 @@ class SummarizationAgent(Agent):
 
         return self.state
 
-import time
-import random
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from threading import Lock
-
-class TokenBucket:
-    def __init__(self, tokens, fill_rate):
-        self.capacity = tokens
-        self.tokens = tokens
-        self.fill_rate = fill_rate
-        self.last_check = time.time()
-        self.lock = Lock()
-
-    def get_token(self):
-        with self.lock:
-            now = time.time()
-            time_passed = now - self.last_check
-            self.tokens = min(self.capacity, self.tokens + time_passed * self.fill_rate)
-            self.last_check = now
-
-            if self.tokens >= 1:
-                self.tokens -= 1
-                return True
-            return False
-
-    def wait_for_token(self):
-        while not self.get_token():
-            time.sleep(0.1)
+    @staticmethod
+    def get_current_utc_datetime():
+        return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
 class ReviewerAgent(Agent):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Adjust these values based on your API limits
-        self.rate_limiter = TokenBucket(tokens=30, fill_rate=0.5)  # 30 tokens per minute
-
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type(Exception)
-    )
-    def review_summary(self, summary, keywords, feedback_value, prompt):
-        self.rate_limiter.wait_for_token()
-
-        summary_str = json.dumps(summary)
-        reviewer_prompt = prompt.format(
-            summary=summary_str,
-            keywords=keywords,
-            feedback=feedback_value,
-            datetime=get_current_utc_datetime(),
-            state=self.state
-        )
-
-        messages = [
-            {"role": "system", "content": reviewer_prompt},
-            {"role": "user", "content": "Review the summarized article for accuracy and relevance."}
-        ]
-
-        llm = self.get_llm()
-        ai_msg = llm.invoke(messages)
-        response = ai_msg.content
-
-        review_data = json.loads(response)
-        if 'review' in review_data:
-            return review_data['review']
-        else:
-            raise ValueError("No valid review found in the response")
-
-    def invoke(self, summaries, prompt=reviewer_prompt_template, feedback=None, keywords=None):
+    def invoke(self, summaries, keywords, feedback=None, prompt=reviewer_prompt_template):
         feedback_value = feedback() if callable(feedback) else feedback
         summaries_value = summaries() if callable(summaries) else summaries
+        keywords_value = keywords() if callable(keywords) else keywords
         feedback_value = check_for_content(feedback_value)
 
         # Extract content from HumanMessage object
@@ -340,15 +276,36 @@ class ReviewerAgent(Agent):
         else:
             print(f"Unexpected type for summaries_value: {type(summaries_value)}")
 
-        reviews = []
-        for summary in summaries_content:
-            try:
-                review = self.review_summary(summary, keywords, feedback_value, prompt)
-                reviews.append(review)
-                # Small random delay between reviews
-                time.sleep(random.uniform(0.5, 1))
-            except Exception as e:
-                print(f"Error processing review: {str(e)}")
+        # Send all summaries at once
+        summaries_str = json.dumps(summaries_content)
+        reviewer_prompt = prompt.format(
+            summaries=summaries_str,
+            keywords=keywords_value,
+            feedback=feedback_value,
+            datetime=get_current_utc_datetime()
+        )
+
+        messages = [
+            {"role": "system", "content": reviewer_prompt},
+            {"role": "user", "content": "Review the summarized articles for accuracy and relevance."}
+        ]
+
+        llm = self.get_llm()
+        ai_msg = llm.invoke(messages)
+        response = ai_msg.content
+
+        try:
+            response_data = json.loads(response)
+            if 'reviews' in response_data and len(response_data['reviews']) > 0:
+                reviews = response_data['reviews']
+            else:
+                raise ValueError("No valid reviews found in the response")
+        except json.JSONDecodeError:
+            print(f"Failed to parse response as JSON: {response}")
+            reviews = []
+        except ValueError as e:
+            print(f"Error processing reviews: {str(e)}")
+            reviews = []
 
         final_response = {"reviews": reviews}
         human_message_response = HumanMessage(content=json.dumps(final_response))

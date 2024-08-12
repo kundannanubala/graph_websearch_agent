@@ -1,4 +1,3 @@
-import json
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage
@@ -8,7 +7,6 @@ from agents.agents import (
     SummarizationAgent,
     ReviewerAgent,
     RouterAgent,
-    KeywordFilterAgent,
     ReportGenerationAgent
 )
 from prompts.prompts import (
@@ -16,18 +14,17 @@ from prompts.prompts import (
     summarization_prompt_template,
     reviewer_prompt_template,
     router_prompt_template,
-    keyword_filter_prompt_template,
     report_generation_prompt_template,
     planner_guided_json,
     summarization_guided_json,
     reviewer_guided_json,
     router_guided_json,
-    keyword_filter_guided_json,
     report_generation_guided_json
 )
-from tools.xml_parser_tool import xml_parser_tool  # Import the xml_parser_tool
-from tools.content_scraper_tool import content_scraper_tool  # Import the content_scraper_tool
-
+from tools.xml_parser_tool import xml_parser_tool
+from tools.content_scraper_tool import content_scraper_tool
+from tools.keyword_filter_tool import keyword_filter_tool  # Import the new tool
+from tools.local_article_loader_tool import local_article_loader_tool #New tool
 import json
 from langchain_core.messages import HumanMessage
 
@@ -70,7 +67,6 @@ class OutputNode:
         # Write the human-readable report to a file
         with open("D:/VentureInternship/final_report.txt", "w") as file:
             file.write(human_readable_report)
-
 
     def generate_human_readable_report(self, report_data):
         human_readable_report = "Final Report\n\n"
@@ -117,36 +113,29 @@ def create_graph(server=None, model=None, stop=None, model_endpoint=None, temper
         )
     )
 
-    graph.add_node(
-        "xml_parser",
-        lambda state: xml_parser_tool(
-            rss_feed_urls=get_agent_graph_state(state=state, state_key="rss_urls"),
-            state=state
-        )
-    )
+    # graph.add_node(
+    #     "xml_parser",
+    #     lambda state: xml_parser_tool(
+    #         rss_feed_urls=get_agent_graph_state(state=state, state_key="rss_urls"),
+    #         state=state
+    #     )
+    # )
 
+    # graph.add_node(
+    #     "content_scraper",
+    #     lambda state: content_scraper_tool(
+    #         state=state
+    #     )
+    # )
+    # Replace xml_parser and content_scraper with local_article_loader
     graph.add_node(
-        "content_scraper",
-        lambda state: content_scraper_tool(
-            state=state
-        )
+        "local_article_loader",
+        lambda state: local_article_loader_tool(state)
     )
 
     graph.add_node(
         "keyword_filter",
-        lambda state: KeywordFilterAgent(
-            state=state,
-            model=model,
-            server=server,
-            guided_json=keyword_filter_guided_json,
-            stop=stop,
-            model_endpoint=model_endpoint,
-            temperature=temperature
-        ).invoke(
-            articles=lambda: get_agent_graph_state(state=state, state_key="content_scraper_response"),
-            keywords=lambda: get_agent_graph_state(state=state, state_key="keywords"),
-            prompt=keyword_filter_prompt_template
-        )
+        lambda state: keyword_filter_tool(state)
     )
 
     graph.add_node(
@@ -160,7 +149,7 @@ def create_graph(server=None, model=None, stop=None, model_endpoint=None, temper
             model_endpoint=model_endpoint,
             temperature=temperature
         ).invoke(
-            filtered_articles=lambda: get_agent_graph_state(state=state, state_key="keyword_filter_latest"),
+            filtered_articles=lambda: get_agent_graph_state(state=state, state_key="keyword_filter_response"),
             keywords=lambda: get_agent_graph_state(state=state, state_key="keywords"),
             feedback=lambda: get_agent_graph_state(state=state, state_key="reviewer_latest"),
             prompt=summarization_prompt_template
@@ -212,7 +201,7 @@ def create_graph(server=None, model=None, stop=None, model_endpoint=None, temper
             model_endpoint=model_endpoint,
             temperature=temperature
         ).invoke(
-            articles=lambda: get_agent_graph_state(state=state, state_key="keyword_filter_latest"),
+            articles=lambda: get_agent_graph_state(state=state, state_key="keyword_filter_response"),
             summaries=lambda: get_agent_graph_state(state=state, state_key="summarization_latest"),
             feedback=lambda: get_agent_graph_state(state=state, state_key="reviewer_latest"),
             prompt=report_generation_prompt_template
@@ -237,7 +226,7 @@ def create_graph(server=None, model=None, stop=None, model_endpoint=None, temper
                 review_content = review.content
             else:
                 review_content = review
-            
+
             review_data = json.loads(review_content)
             next_agent = review_data["next_agent"]
         else:
@@ -248,9 +237,8 @@ def create_graph(server=None, model=None, stop=None, model_endpoint=None, temper
     # Add edges to the graph
     graph.set_entry_point("planner")
     graph.set_finish_point("output")
-    graph.add_edge("planner", "xml_parser")
-    graph.add_edge("xml_parser", "content_scraper")
-    graph.add_edge("content_scraper", "keyword_filter")
+    graph.add_edge("planner", "local_article_loader") #updated graph edges with local article loader
+    graph.add_edge("local_article_loader", "keyword_filter")
     graph.add_edge("keyword_filter", "summarization")
     graph.add_edge("summarization", "reviewer")
     graph.add_edge("reviewer", "router")
@@ -260,7 +248,6 @@ def create_graph(server=None, model=None, stop=None, model_endpoint=None, temper
     )
 
     graph.add_edge("report_generator", "output")
-
     return graph
 
 def compile_workflow(graph):

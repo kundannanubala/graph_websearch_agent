@@ -6,6 +6,7 @@ class AgentGraphState(TypedDict):
     rss_urls: list[str]
     keywords: list[str]
     planner_response: Annotated[list, add_messages]
+    local_article_loader_response: Annotated[list, add_messages] #New Field
     xml_parser_response: Annotated[list, add_messages]
     content_scraper_response: Annotated[list, add_messages]
     keyword_filter_response: Annotated[list, add_messages]
@@ -27,15 +28,15 @@ def get_agent_graph_state(state: AgentGraphState, state_key: str):
             return state["planner_response"][-1]
         else:
             return state["planner_response"]
-
+        
+    elif state_key == "local_article_loader_response":
+        return state["local_article_loader_response"]        
     elif state_key == "xml_parser_response":
         return state["xml_parser_response"]
     elif state_key == "content_scraper_response":
         return state["content_scraper_response"]
 
-    elif state_key == "keyword_filter_all":
-        return state["keyword_filter_response"]
-    elif state_key == "keyword_filter_latest":
+    elif state_key == "keyword_filter_response":
         if state["keyword_filter_response"]:
             return state["keyword_filter_response"][-1]
         else:
@@ -81,6 +82,7 @@ state = {
     "rss_urls": [],
     "keywords": [],
     "planner_response": [],
+    "local_article_loader_response": [],  # New field
     "xml_parser_response": [],
     "content_scraper_response":[],
     "keyword_filter_response": [],

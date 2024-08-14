@@ -6,7 +6,7 @@ from models.openai_models import get_open_ai, get_open_ai_json
 from models.ollama_models import OllamaModel, OllamaJSONModel
 from models.vllm_models import VllmJSONModel, VllmModel
 from models.groq_models import GroqModel, GroqJSONModel
-from models.claude_models import ClaudModel, ClaudJSONModel
+from models.claude_models import ClaudVertexModel, ClaudVertexJSONModel
 from models.gemini_models import GeminiModel, GeminiJSONModel
 from langchain_core.messages import HumanMessage
 import json
@@ -58,10 +58,10 @@ class Agent:
                 temperature=self.temperature
             )
         if self.server == 'claude':
-            return ClaudJSONModel(
+            return ClaudVertexJSONModel(
                 model=self.model,
                 temperature=self.temperature
-            ) if json_model else ClaudModel(
+            ) if json_model else ClaudVertexModel(
                 model=self.model,
                 temperature=self.temperature
             )

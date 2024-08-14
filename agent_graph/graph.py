@@ -25,6 +25,7 @@ from tools.xml_parser_tool import xml_parser_tool
 from tools.content_scraper_tool import content_scraper_tool
 from tools.keyword_filter_tool import keyword_filter_tool  # Import the new tool
 from tools.local_article_loader_tool import local_article_loader_tool #New tool
+from tools.review_filter_tool import review_filter_tool #new review filter tool which removes the articles which failed the review
 import json
 from langchain_core.messages import HumanMessage
 
@@ -78,6 +79,7 @@ class OutputNode:
 
                 article = report.get('article', {})
                 human_readable_report += f"Article: {article.get('title', 'N/A')}\n"
+                human_readable_report += f"matching_keywords: {article.get('matching_keywords','N/A')}\n"
                 human_readable_report += f"Author: {article.get('author', 'N/A')}\n"
                 human_readable_report += f"Published Date: {article.get('published_date', 'N/A')}\n"
                 human_readable_report += f"Summary: {article.get('summary', 'N/A')}\n"
@@ -189,6 +191,10 @@ def create_graph(server=None, model=None, stop=None, model_endpoint=None, temper
             prompt=router_prompt_template
         )
     )
+    graph.add_node(
+    "review_filter",
+    lambda state: review_filter_tool(state) 
+    ) #new node added before sending to report generator to reduce unnecessary context
 
     graph.add_node(
         "report_generator",
@@ -230,7 +236,7 @@ def create_graph(server=None, model=None, stop=None, model_endpoint=None, temper
             review_data = json.loads(review_content)
             next_agent = review_data["next_agent"]
         else:
-            next_agent = "report_generator"
+            next_agent = "review_filter"
 
         return next_agent
 
@@ -246,7 +252,7 @@ def create_graph(server=None, model=None, stop=None, model_endpoint=None, temper
         "router",
         lambda state: pass_review(state=state),
     )
-
+    graph.add_edge("review_filter", "report_generator")
     graph.add_edge("report_generator", "output")
     return graph
 

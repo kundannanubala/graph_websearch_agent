@@ -259,7 +259,7 @@ class SummarizationAgent(Agent):
         return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
 class ReviewerAgent(Agent):
-    def invoke(self, summaries, keywords, feedback=None, prompt=reviewer_prompt_template):
+    def invoke(self, summaries, keywords, feedback=None, prompt=reviewer_prompt_template, batch_size=5):
         feedback_value = feedback() if callable(feedback) else feedback
         summaries_value = summaries() if callable(summaries) else summaries
         keywords_value = keywords() if callable(keywords) else keywords
@@ -276,38 +276,41 @@ class ReviewerAgent(Agent):
         else:
             print(f"Unexpected type for summaries_value: {type(summaries_value)}")
 
-        # Send all summaries at once
-        summaries_str = json.dumps(summaries_content)
-        reviewer_prompt = prompt.format(
-            summaries=summaries_str,
-            keywords=keywords_value,
-            feedback=feedback_value,
-            datetime=get_current_utc_datetime()
-        )
+        all_reviews = []
 
-        messages = [
-            {"role": "system", "content": reviewer_prompt},
-            {"role": "user", "content": "Review the summarized articles for accuracy and relevance."}
-        ]
+        # Process summaries in batches
+        for i in range(0, len(summaries_content), batch_size):
+            batch_summaries = summaries_content[i:i+batch_size]
+            batch_summaries_str = json.dumps(batch_summaries)
 
-        llm = self.get_llm()
-        ai_msg = llm.invoke(messages)
-        response = ai_msg.content
+            reviewer_prompt = prompt.format(
+                summaries=batch_summaries_str,
+                keywords=keywords_value,
+                feedback=feedback_value,
+                datetime=self.get_current_utc_datetime()
+            )
 
-        try:
-            response_data = json.loads(response)
-            if 'reviews' in response_data and len(response_data['reviews']) > 0:
-                reviews = response_data['reviews']
-            else:
-                raise ValueError("No valid reviews found in the response")
-        except json.JSONDecodeError:
-            print(f"Failed to parse response as JSON: {response}")
-            reviews = []
-        except ValueError as e:
-            print(f"Error processing reviews: {str(e)}")
-            reviews = []
+            messages = [
+                {"role": "system", "content": reviewer_prompt},
+                {"role": "user", "content": f"Review this batch of {len(batch_summaries)} summarized articles for accuracy and relevance."}
+            ]
 
-        final_response = {"reviews": reviews}
+            llm = self.get_llm()
+            ai_msg = llm.invoke(messages)
+            response = ai_msg.content
+
+            try:
+                response_data = json.loads(response)
+                if 'reviews' in response_data and len(response_data['reviews']) > 0:
+                    all_reviews.extend(response_data['reviews'])
+                else:
+                    print(f"No valid reviews found in the response for batch {i//batch_size + 1}")
+            except json.JSONDecodeError:
+                print(f"Failed to parse response as JSON for batch {i//batch_size + 1}: {response}")
+            except ValueError as e:
+                print(f"Error processing reviews for batch {i//batch_size + 1}: {str(e)}")
+
+        final_response = {"reviews": all_reviews}
         human_message_response = HumanMessage(content=json.dumps(final_response))
 
         self.update_state("reviewer_response", human_message_response)
@@ -316,6 +319,10 @@ class ReviewerAgent(Agent):
             file.write(f"Reviewer: {json.dumps(final_response, indent=2)}\n")
 
         return self.state
+
+    @staticmethod
+    def get_current_utc_datetime():
+        return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 class RouterAgent(Agent):
@@ -341,8 +348,9 @@ class RouterAgent(Agent):
             file.write(f"Router: {response}\n")
         return self.state
 
+
 class ReportGenerationAgent(Agent):
-    def invoke(self, articles, summaries, feedback=None, prompt=report_generation_prompt_template):
+    def invoke(self, articles, summaries, feedback=None, prompt=report_generation_prompt_template, batch_size=10):
         feedback_value = feedback() if callable(feedback) else feedback
         summaries_value = summaries() if callable(summaries) else summaries
         articles_value = articles() if callable(articles) else articles
@@ -369,21 +377,33 @@ class ReportGenerationAgent(Agent):
         else:
             print(f"Unexpected type for articles_value: {type(articles_value)}")
 
-        reports = []
-        for article, summary in zip(articles_content, summaries_content):
-            article_str = json.dumps(article)
-            summary_str = json.dumps(summary)
+        all_reports = []
+
+        # Process articles and summaries in batches
+        for i in range(0, len(articles_content), batch_size):
+            batch_articles = articles_content[i:i+batch_size]
+            batch_summaries = summaries_content[i:i+batch_size]
+
+            # Prepare the batch data
+            articles_and_summaries = [
+                {
+                    "article": article,
+                    "summary": summary,
+                    "matching_keywords": article.get("matching_keywords", [])  # Include matching_keywords
+                }
+                for article, summary in zip(batch_articles, batch_summaries)
+            ]
+            articles_and_summaries_str = json.dumps(articles_and_summaries)
 
             report_generation_prompt = prompt.format(
-                article=article_str,
-                summary=summary_str,
+                articles_and_summaries=articles_and_summaries_str,
                 feedback=feedback_value,
-                datetime=get_current_utc_datetime()
+                datetime=self.get_current_utc_datetime()
             )
 
             messages = [
                 {"role": "system", "content": report_generation_prompt},
-                {"role": "user", "content": "Generate a concise report based on the article and its summary."}
+                {"role": "user", "content": f"Generate concise reports for this batch of {len(batch_articles)} articles."}
             ]
 
             llm = self.get_llm()
@@ -391,26 +411,27 @@ class ReportGenerationAgent(Agent):
             response = ai_msg.content
 
             try:
-                # Parse the response to extract the report
                 response_data = json.loads(response)
-                if 'report' in response_data:
-                    reports.append(response_data['report'])
+                if 'reports' in response_data and len(response_data['reports']) > 0:
+                    all_reports.extend(response_data['reports'])
                 else:
-                    raise ValueError("No valid report found in the response")
+                    print(f"No valid reports found in the response for batch {i//batch_size + 1}")
             except json.JSONDecodeError:
-                print(f"Failed to parse response as JSON: {response}")
+                print(f"Failed to parse response as JSON for batch {i//batch_size + 1}: {response}")
             except ValueError as e:
-                print(f"Error processing report: {str(e)}")
+                print(f"Error processing reports for batch {i//batch_size + 1}: {str(e)}")
 
-        final_response = {"reports": reports}
-        # Create a HumanMessage object with the final response
+        final_response = {"reports": all_reports}
         human_message_response = HumanMessage(content=json.dumps(final_response))
 
-        # Update the state with the HumanMessage object
         self.update_state("report_generation_response", human_message_response)
 
         with open("D:/VentureInternship/response.txt", "a") as file:
             file.write(f"Report Generator: {json.dumps(final_response, indent=2)}\n")
 
         return self.state
+
+    @staticmethod
+    def get_current_utc_datetime():
+        return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 

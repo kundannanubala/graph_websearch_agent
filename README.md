@@ -88,3 +88,16 @@ Ollama [API documentation](https://github.com/ollama/ollama/blob/main/docs/api.m
 
 [![Watch the video](https://img.youtube.com/vi/tVcOU054iWA/0.jpg)](https://youtu.be/tVcOU054iWA)
 
+
+### Follow these additional steps to use Claude model
+1. **Create a .gitignore file in root directory**
+2. **Create a credentials.json file in the root directory**
+3. **Insert the json code given by Teja in the Credentials.json file**
+4. **write/mention the  credentials.json file in the .gitignore file**
+5. **In the terminal before run in the following order**
+$env:GOOGLE_APPLICATION_CREDENTIALS = "credentials.json"
+$env:GOOGLE_CLOUD_PROJECT = "researchdevelopment-424002"
+$env:GOOGLE_CLOUD_REGION = "europe-west1"
+python -m app.app
+
+Some additional libraries are required please install them one by one

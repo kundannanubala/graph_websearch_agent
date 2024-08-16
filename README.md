@@ -96,8 +96,8 @@ Ollama [API documentation](https://github.com/ollama/ollama/blob/main/docs/api.m
 4. **write/mention the  credentials.json file in the .gitignore file**
 5. **In the terminal before run in the following order**
 $env:GOOGLE_APPLICATION_CREDENTIALS = "credentials.json"
-$env:GOOGLE_CLOUD_PROJECT = "researchdevelopment-424002"
-$env:GOOGLE_CLOUD_REGION = "europe-west1"
+$env:GOOGLE_CLOUD_PROJECT = "******" 
+$env:GOOGLE_CLOUD_REGION = "*****"
 python -m app.app
 
 Some additional libraries are required please install them one by one

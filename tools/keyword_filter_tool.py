@@ -36,7 +36,7 @@ def keyword_filter_tool(state):
         json.dump(filtered_articles_json, file, indent=4)
 
     with open("D:/VentureInternship/response.txt", "a") as file:
-        file.write(f"\nKeyword_Filter_Tool: {len(filtered_articles)} articles filtered")
+        file.write(f"\nKeyword_Filter_Tool: {len(filtered_articles)} articles filtered\n")
         for article in filtered_articles:
             file.write(f"\n  - Article: {article.get('title', 'No title')} | Keywords: {', '.join(article['matching_keywords'])}")
 

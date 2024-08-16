@@ -350,7 +350,9 @@ class RouterAgent(Agent):
 
 
 class ReportGenerationAgent(Agent):
-    def invoke(self, articles, summaries, feedback=None, prompt=report_generation_prompt_template, batch_size=10):
+    def invoke(self, articles, summaries, feedback=None, prompt=report_generation_prompt_template, batch_size=5):
+        # import pdb
+        # pdb.set_trace()
         feedback_value = feedback() if callable(feedback) else feedback
         summaries_value = summaries() if callable(summaries) else summaries
         articles_value = articles() if callable(articles) else articles
@@ -411,6 +413,8 @@ class ReportGenerationAgent(Agent):
             response = ai_msg.content
 
             try:
+                # import pdb
+                # pdb.set_trace()
                 response_data = json.loads(response)
                 if 'reports' in response_data and len(response_data['reports']) > 0:
                     all_reports.extend(response_data['reports'])

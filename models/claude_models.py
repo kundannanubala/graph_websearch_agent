@@ -54,7 +54,7 @@ class ClaudVertexJSONModel(ClaudVertexModel):
         try:
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=1024,
+                max_tokens=4096,
                 temperature=self.temperature,
                 messages=[
                     {
@@ -63,11 +63,15 @@ class ClaudVertexJSONModel(ClaudVertexModel):
                     }
                 ]
             )
-
             response_content = response.content[0].text
+            with open('D:/VentureInternship/ModelResponse.txt','a') as file:
+                file.write(f'Model Response:\n{response_content}\n')
             response = json.loads(response_content)
+            with open('D:/VentureInternship/ModelResponse.txt','a') as file:
+                file.write(f'Json Load Response:\n{response}\n')
             response = json.dumps(response)
-
+            with open('D:/VentureInternship/ModelResponse.txt','a') as file:
+                file.write(f'Json Dumps Response:\n{response}\n')
             response_formatted = HumanMessage(content=response)
 
             return response_formatted

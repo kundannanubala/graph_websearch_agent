@@ -29,24 +29,24 @@ def review_filter_tool(state):
         print("No valid summarization response found.")
         return state
 
-    # Create a set of titles that passed the review
-    passed_titles = {review["title"] for review in reviews if review.get("pass_review", False)}
+    # Create a dictionary of review results
+    review_results = {review["title"]: review.get("pass_review", False) for review in reviews}
 
     # Filter articles and summaries
     for article in articles:
-        if article["title"] in passed_titles:
+        if review_results.get(article["title"], False):
             filtered_articles.append(article)
 
     for summary in summaries:
-        if summary["title"] in passed_titles:
+        if review_results.get(summary["title"], False):
             filtered_summaries.append(summary)
 
     # Update the state with filtered results
-    state["keyword_filter_response"] = [HumanMessage(content=json.dumps({"filtered_articles": filtered_articles}))]
-    state["summarization_response"] = [HumanMessage(content=json.dumps({"summaries": filtered_summaries}))]
+    state["keyword_filter_response"] = [HumanMessage(content=json.dumps({"filtered_articles": filtered_articles}, ensure_ascii=False))]
+    state["summarization_response"] = [HumanMessage(content=json.dumps({"summaries": filtered_summaries}, ensure_ascii=False))]
 
     # Log the results
     with open("D:/VentureInternship/response.txt", "a") as file:
-        file.write(f"\nReview Filter Tool: Removed {len(articles) - len(filtered_articles)} articles that failed review.\n")
+        file.write(f"\nReview Filter Tool: Kept {len(filtered_articles)} articles that passed review. Removed {len(articles) - len(filtered_articles)} articles.\n")
 
     return state

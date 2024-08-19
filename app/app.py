@@ -4,8 +4,12 @@ from agent_graph.graph import create_graph, compile_workflow
 # model = 'llama3:instruct'
 # model_endpoint = None
 
-server = 'openai'
-model = 'gpt-4o'
+# server = 'openai'
+# model = 'gpt-4o'
+# model_endpoint = None
+
+server = 'claude'
+model = "claude-3-5-sonnet@20240620"
 model_endpoint = None
 
 # server = 'vllm'
@@ -32,7 +36,7 @@ if __name__ == "__main__":
             break
 
         rss_urls = [
-        # "https://rss.app/feeds/PfSPW1PZmIDrjC8u.xml" #https://www.greenbiz.com/
+        "https://rss.app/feeds/PfSPW1PZmIDrjC8u.xml" ,#https://www.greenbiz.com/
         "https://rss.app/feeds/bovDvfqaIz2KoDdw.xml" #https://www.green.earth
     ]
 

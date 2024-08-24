@@ -4,6 +4,10 @@ from anthropic import AnthropicVertex
 from utils.helper_functions import load_config
 from langchain_core.messages.human import HumanMessage
 import json
+from dotenv import load_dotenv
+import re
+
+load_dotenv()
 
 class ClaudVertexModel:
     def __init__(self, temperature=0, model=None):
@@ -11,8 +15,8 @@ class ClaudVertexModel:
         load_config(config_path)
 
         # Load Google Cloud credentials
-        self.project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
-        self.region = os.environ.get("GOOGLE_CLOUD_REGION")
+        self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+        self.region = os.getenv("GOOGLE_CLOUD_REGION")
 
         # Initialize Anthropic Vertex client
         self.client = AnthropicVertex(project_id=self.project_id, region=self.region)
@@ -64,14 +68,25 @@ class ClaudVertexJSONModel(ClaudVertexModel):
                 ]
             )
             response_content = response.content[0].text
-            with open('D:/VentureInternship/ModelResponse.txt','a') as file:
+            with open('D:/VentureInternship/AI Agent/IELTSBot/ModelResponse.txt','a') as file:
                 file.write(f'Model Response:\n{response_content}\n')
-            response = json.loads(response_content)
-            with open('D:/VentureInternship/ModelResponse.txt','a') as file:
+
+            # Clean the response content
+            cleaned_content = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', response_content)
+
+            try:
+                response = json.loads(cleaned_content)
+            except json.JSONDecodeError:
+                # If JSON parsing fails, return the raw text
+                response = {"raw_text": cleaned_content}
+
+            with open('D:/VentureInternship/AI Agent/IELTSBot/ModelResponse.txt','a') as file:
                 file.write(f'Json Load Response:\n{response}\n')
+
             response = json.dumps(response)
-            with open('D:/VentureInternship/ModelResponse.txt','a') as file:
+            with open('D:/VentureInternship/AI Agent/IELTSBot/ModelResponse.txt','a') as file:
                 file.write(f'Json Dumps Response:\n{response}\n')
+
             response_formatted = HumanMessage(content=response)
 
             return response_formatted

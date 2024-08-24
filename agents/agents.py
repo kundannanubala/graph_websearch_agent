@@ -12,15 +12,18 @@ from langchain_core.messages import HumanMessage
 import json
 from datetime import datetime
 from prompts.prompts import (
-    summarization_prompt_template
+    analysis_node2_prompt,
+    feedback_generation_prompt,
+    scoring_prompt,
+    paraphrasing_prompt
 )
 from utils.helper_functions import get_current_utc_datetime, check_for_content
 from states.state import AgentGraphState
 from pymongo import MongoClient
 
-# MongoDB connection setup
-client = MongoClient('mongodb://localhost:27017/')
-db = client['FeedParser']  # This is your database name
+# # MongoDB connection setup
+# client = MongoClient('mongodb://localhost:27017/')
+# db = client['FeedParser']  # This is your database name
 
 class Agent:
     def __init__(self, state: AgentGraphState, model=None, server=None, temperature=0, model_endpoint=None, stop=None, guided_json=None):
@@ -79,77 +82,166 @@ class Agent:
         self.state = {**self.state, key: value}
 
 
-class SummarizationAgent(Agent):
-    def invoke(self, articles, keywords, feedback=None, prompt=summarization_prompt_template, batch_size=5):
-        feedback_value = feedback() if callable(feedback) else feedback
-        articles_value = articles() if callable(articles) else articles
-        keywords_value = keywords() if callable(keywords) else keywords
-        feedback_value = check_for_content(feedback_value)
+class AnalysisNode2Agent(Agent):
+    def invoke(self, state):
+        # Correctly extract preprocessed data from state
+        preprocessed_data_message = state["preprocessed_data"][0]
+        preprocessed_data = json.loads(preprocessed_data_message.content)
 
-        # Extract content from HumanMessage object
-        articles_content = []
-        if isinstance(articles_value, list) and len(articles_value) > 0 and isinstance(articles_value[0], HumanMessage):
-            try:
-                message_content = json.loads(articles_value[0].content)
-                articles_content = message_content.get('articles', [])
-            except json.JSONDecodeError:
-                print(f"Failed to parse articles_value content as JSON: {articles_value[0].content}")
-        else:
-            print(f"Unexpected type for articles_value: {type(articles_value)}")
+        # Correctly extract analysis_node1 results from state
+        analysis_node1_message = state["analysis_node1_response"][-1]
+        analysis_node1_results = json.loads(analysis_node1_message.content)
 
-        all_summaries = []
+        messages = [
+            {"role": "system", "content": analysis_node2_prompt.format(
+                text=preprocessed_data['text'],
+                analysis_results=json.dumps(analysis_node1_results, indent=2)
+            )},
+            {"role": "user", "content": "Please provide your analysis."}
+        ]
 
-        # Process articles in batches
-        for i in range(0, len(articles_content), batch_size):
-            batch = articles_content[i:i+batch_size]
-            batch_str = json.dumps(batch)
+        llm = self.get_llm()
+        ai_msg = llm.invoke(messages)
 
-            summarization_prompt = prompt.format(
-                articles=batch_str,
-                keywords=keywords_value,
-                feedback=feedback_value,
-                datetime=self.get_current_utc_datetime()
-            )
+        # Store the result in the state
+        if "analysis_node2_response" not in state:
+            state["analysis_node2_response"] = []
+        state["analysis_node2_response"].append(
+            HumanMessage(role="system", content=ai_msg.content)
+        )
+        response=ai_msg.content
+        with open('D:/VentureInternship/AI Agent/IELTSBot/response.txt','a') as file:
+            file.write(f"Analysis Node 2 response:\n{response}\n")
+
+        return {"analysis_node2_response": state["analysis_node2_response"]}
+    
+
+class FeedbackGenerationAgent(Agent):
+    def invoke(self, state):
+        # Correctly extract preprocessed data from state
+        preprocessed_data_message = state["preprocessed_data"][0]
+        preprocessed_data = json.loads(preprocessed_data_message.content)
+
+        # Correctly extract analysis_node1 results from state
+        analysis_node1_message = state["analysis_node1_response"][-1]
+        analysis_node1_results = json.loads(analysis_node1_message.content)
+
+        # Correctly extract analysis_node2 results from state
+        analysis_node2_message = state["analysis_node2_response"][-1]
+        analysis_node2_results = json.loads(analysis_node2_message.content)
+
+        messages = [
+            {"role": "system", "content": feedback_generation_prompt.format(
+                text=preprocessed_data['text'],
+                analysis_results=json.dumps({**analysis_node1_results, **analysis_node2_results}, indent=2)
+            )},
+            {"role": "user", "content": "Please provide your detailed feedback."}
+        ]
+
+        llm = self.get_llm()
+        ai_msg = llm.invoke(messages)
+
+        # Store the result in the state
+        if "feedback_response" not in state:
+            state["feedback_response"] = []
+        state["feedback_response"].append(
+            HumanMessage(role="system", content=ai_msg.content)
+        )
+        response=ai_msg.content
+        with open('D:/VentureInternship/AI Agent/IELTSBot/response.txt','a') as file:
+            file.write(f"FeedBack Node response:\n{response}\n")
+        
+
+        return {"feedback_response": state["feedback_response"]}   
+    
+
+class ScoringAgent(Agent):
+    def invoke(self, state):
+        # Correctly extract analysis_node1 results from state
+        analysis_node1_message = state["analysis_node1_response"][-1]
+        analysis_node1_results = json.loads(analysis_node1_message.content)
+
+        # Correctly extract analysis_node2 results from state
+        analysis_node2_message = state["analysis_node2_response"][-1]
+        analysis_node2_results = json.loads(analysis_node2_message.content)
+
+        messages = [
+            {"role": "system", "content": scoring_prompt.format(
+                analysis_results=json.dumps({**analysis_node1_results, **analysis_node2_results}, indent=2)
+            )},
+            {"role": "user", "content": "Please provide the IELTS writing score breakdown."}
+        ]
+
+        llm = self.get_llm()
+        ai_msg = llm.invoke(messages)
+
+        # Store the result in the state
+        if "scoring_response" not in state:
+            state["scoring_response"] = []
+        state["scoring_response"].append(
+            HumanMessage(role="system", content=ai_msg.content)
+        )
+        response=ai_msg.content
+        with open('D:/VentureInternship/AI Agent/IELTSBot/response.txt','a') as file:
+            file.write(f"Scoring Node response:\n{response}\n")
+        
+
+        return {"scoring_response": state["scoring_response"]}    
+    
+
+class ParaphrasingAgent(Agent):
+    def invoke(self, state):
+        try:
+            # Correctly extract preprocessed data from state
+            preprocessed_data_message = state["preprocessed_data"][0]
+            preprocessed_data = json.loads(preprocessed_data_message.content)
+
+            # Correctly extract scoring results from state
+            scoring_message = state["scoring_response"][-1]
+            scoring_results = json.loads(scoring_message.content)
 
             messages = [
-                {"role": "system", "content": summarization_prompt},
-                {"role": "user", "content": f"Summarize this batch of {len(batch)} articles."}
+                {"role": "system", "content": paraphrasing_prompt.format(
+                    text=preprocessed_data['text'],
+                    scores=json.dumps(scoring_results, indent=2)
+                )},
+                {"role": "user", "content": "Please provide the improved, Band 8 level paraphrased version."}
             ]
 
             llm = self.get_llm()
             ai_msg = llm.invoke(messages)
-            response = ai_msg.content
 
+            # Attempt to parse the response as JSON
             try:
-                response_data = json.loads(response)
-                if 'summaries' in response_data and len(response_data['summaries']) > 0:
-                    all_summaries.extend(response_data['summaries'])
-
-                    # Insert each summary into MongoDB
-                    for summary in response_data['summaries']:
-                        summarized_content = {
-                            "scraped_content_id": summary['source'],  # This assumes source is the URL or ID
-                            "summary": summary['summary']
-                        }
-                        db['SummarizedContent'].insert_one(summarized_content)  # Use the 'SummarizedContent' collection
-
-                else:
-                    print(f"No valid summaries found in the response for batch {i//batch_size + 1}")
+                response_content = json.loads(ai_msg.content)
             except json.JSONDecodeError:
-                print(f"Failed to parse response as JSON for batch {i//batch_size + 1}: {response}")
-            except ValueError as e:
-                print(f"Error processing summaries for batch {i//batch_size + 1}: {str(e)}")
+                # If parsing fails, use the raw text
+                response_content = {"raw_text": ai_msg.content}
 
-        final_response = {"summaries": all_summaries}
-        human_message_response = HumanMessage(content=json.dumps(final_response))
+            # Store the result in the state
+            if "paraphrased_response" not in state:
+                state["paraphrased_response"] = []
+            state["paraphrased_response"].append(
+                HumanMessage(role="system", content=json.dumps(response_content))
+            )
 
-        self.update_state("summarization_response", human_message_response)
+            with open('D:/VentureInternship/AI Agent/IELTSBot/response.txt','a') as file:
+                file.write(f"Paraphrasing Node response:\n{json.dumps(response_content, indent=2)}\n")
 
-        with open("D:/VentureInternship/response.txt", "a") as file:
-            file.write(f"\nSummarizer: {json.dumps(final_response, indent=2)}\n")
+            return {"paraphrased_response": state["paraphrased_response"]}
 
-        return self.state
+        except Exception as e:
+            error_message = f"Error in ParaphrasingAgent: {str(e)}"
+            print("ERROR", error_message)
+            error_response = {"error": error_message}
 
-    @staticmethod
-    def get_current_utc_datetime():
-        return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+            if "paraphrased_response" not in state:
+                state["paraphrased_response"] = []
+            state["paraphrased_response"].append(
+                HumanMessage(role="system", content=json.dumps(error_response))
+            )
+
+            with open('D:/VentureInternship/AI Agent/IELTSBot/response.txt','a') as file:
+                file.write(f"Paraphrasing Node error:\n{json.dumps(error_response, indent=2)}\n")
+
+            return {"paraphrased_response": state["paraphrased_response"]}

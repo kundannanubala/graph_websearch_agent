@@ -4,68 +4,95 @@ from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage
 from termcolor import colored
 from agents.agents import (
-    SummarizationAgent
+    AnalysisNode2Agent,
+    FeedbackGenerationAgent,
+    ScoringAgent,
+    ParaphrasingAgent,
 )
-from prompts.prompts import (
-    summarization_prompt_template,
-    summarization_guided_json,
-)
-from tools.xml_parser_tool import xml_parser_tool  # Import the xml_parser_tool
-from tools.content_scraper_tool import content_scraper_tool  # Import the content_scraper_tool
-from tools.keyword_filter_tool import keyword_filter_tool #Import the keyword_filter_tool
-
-import json
-from langchain_core.messages import HumanMessage
-
-
+from tools.preprocessing_tool import preprocessing_tool
+from tools.analysis_node1_tool import analysis_node1_tool
 from states.state import AgentGraphState, get_agent_graph_state, state
 
 def create_graph(server=None, model=None, stop=None, model_endpoint=None, temperature=0):
     graph = StateGraph(AgentGraphState)
 
+    # Preprocessing Node
     graph.add_node(
-        "xml_parser",
-        lambda state: xml_parser_tool(
-            rss_feed_urls=get_agent_graph_state(state=state, state_key="rss_urls"),
-            state=state
-        )
+        "preprocessing",
+        lambda state: preprocessing_tool(state)
     )
 
+    # Analysis Node 1
     graph.add_node(
-        "content_scraper",
-        lambda state: content_scraper_tool(
-            state=state
-        )
+        "analysis_node1",
+        lambda state: analysis_node1_tool(state)
     )
 
+    # Analysis Node 2
     graph.add_node(
-        "summarization",
-        lambda state: SummarizationAgent(
+        "analysis_node2",
+        lambda state: AnalysisNode2Agent(
             state=state,
             model=model,
             server=server,
-            guided_json=summarization_guided_json,
             stop=stop,
             model_endpoint=model_endpoint,
             temperature=temperature
-        ).invoke(
-            articles=lambda: get_agent_graph_state(state=state, state_key="content_scraper_response"),
-            keywords=lambda: get_agent_graph_state(state=state, state_key="keywords"),
-            feedback=lambda: get_agent_graph_state(state=state, state_key="reviewer_latest"),
-            prompt=summarization_prompt_template
-        )
-    )
-    
-    graph.add_node(
-        "keyword_filter",
-        lambda state: keyword_filter_tool(state)
+        ).invoke(state)
     )
 
-    graph.set_entry_point("xml_parser") # Making feed parsing as entry point
-    graph.set_finish_point("keyword_filter")
-    graph.add_edge("xml_parser", "content_scraper")
-    graph.add_edge("content_scraper","summarization")
-    graph.add_edge("summarization","keyword_filter")
+    # Feedback Generation Node
+    graph.add_node(
+        "feedback_generation",
+        lambda state: FeedbackGenerationAgent(
+            state=state,
+            model=model,
+            server=server,
+            stop=stop,
+            model_endpoint=model_endpoint,
+            temperature=temperature
+        ).invoke(state)
+    )
+
+    # Scoring Node
+    graph.add_node(
+        "scoring",
+        lambda state: ScoringAgent(
+            state=state,
+            model=model,
+            server=server,
+            stop=stop,
+            model_endpoint=model_endpoint,
+            temperature=temperature
+        ).invoke(state)
+    )
+
+    # Paraphrasing Node
+    graph.add_node(
+        "paraphrasing",
+        lambda state: ParaphrasingAgent(
+            state=state,
+            model=model,
+            server=server,
+            stop=stop,
+            model_endpoint=model_endpoint,
+            temperature=temperature
+        ).invoke(state)
+    )
+
+
+    # Set the entry point
+    graph.set_entry_point("preprocessing")
+
+    # Set the finish point
+    graph.set_finish_point("paraphrasing")
+
+    # Add edges to connect the nodes
+    graph.add_edge("preprocessing", "analysis_node1")
+    graph.add_edge("analysis_node1", "analysis_node2")
+    graph.add_edge("analysis_node2", "feedback_generation")
+    graph.add_edge("feedback_generation", "scoring")
+    graph.add_edge("scoring", "paraphrasing")
 
     return graph
 

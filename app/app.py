@@ -1,71 +1,57 @@
+import tkinter as tk
+from tkinter import simpledialog, messagebox
 from agent_graph.graph import create_graph, compile_workflow
 
-# server = 'ollama'
-# model = 'llama3:instruct'
-# model_endpoint = None
-
-# server = 'openai'
-# model = 'gpt-4o'
-# model_endpoint = None
-
+# Server and model configuration
 server = 'claude'
 model = "claude-3-5-sonnet@20240620"
 model_endpoint = None
 
-# server = 'vllm'
-# model = 'meta-llama/Meta-Llama-3-70B-Instruct' # full HF path
-# model_endpoint = 'https://kcpqoqtjz0ufjw-8000.proxy.runpod.net/' 
-# #model_endpoint = runpod_endpoint + 'v1/chat/completions'
-# stop = "<|end_of_text|>"
-
 iterations = 40
 
-print ("Creating graph and compiling workflow...")
+print("Creating graph and compiling workflow...")
 graph = create_graph(server=server, model=model, model_endpoint=model_endpoint)
 workflow = compile_workflow(graph)
-print ("Graph and workflow created.")
+print("Graph and workflow created.")
 
+def get_user_input():
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+    user_input = simpledialog.askstring("IELTS Writing Analyzer", "Enter your IELTS writing task:", parent=root)
+    return user_input
+
+def show_results(results):
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+    messagebox.showinfo("Analysis Results", results)
 
 if __name__ == "__main__":
-
     verbose = False
 
     while True:
-        query = input("Enter to continue: ")
-        if query.lower() == "exit":
+        user_input = get_user_input()
+        if user_input is None or user_input.lower() == "exit":
             break
 
-        rss_urls = [
-        "https://rss.app/feeds/PfSPW1PZmIDrjC8u.xml" ,#https://www.greenbiz.com/
-        "https://rss.app/feeds/bovDvfqaIz2KoDdw.xml" #https://www.green.earth
-    ]
-
-        keywords = ["tokenization", "web3", "RWA", "AI", "Biodiversity", "nature based carbon credits"]
-        
         dict_inputs = {
-            "rss_urls": rss_urls,
-            "keywords": keywords
+            "user_input": user_input
         }
-        # thread = {"configurable": {"thread_id": "4"}}
+
         limit = {"recursion_limit": iterations}
 
-        # for event in workflow.stream(
-        #     dict_inputs, thread, limit, stream_mode="values"
-        #     ):
-        #     if verbose:
-        #         print("\nState Dictionary:", event)
-        #     else:
-        #         print("\n")
-
-        for event in workflow.stream(
-            dict_inputs, limit
-            ):
+        print("\nAnalyzing your writing...")
+        final_event = None
+        for event in workflow.stream(dict_inputs, limit):
+            final_event = event
             if verbose:
-                # print("\nState Dictionary:", event)
-                print('')
+                print(event)
             else:
-                print("\n")
+                print(".", end="", flush=True)
 
+        print("\nAnalysis complete.")
 
+        should_continue = messagebox.askyesno("Continue?", "Would you like to analyze another piece of writing?")
+        if not should_continue:
+            break
 
-    
+print("Thank you for using the IELTS Writing Analyzer!")

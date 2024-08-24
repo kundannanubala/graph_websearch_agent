@@ -4,6 +4,7 @@ from langgraph.graph.message import add_messages
 # Define the state object for the agent graph
 class AgentGraphState(TypedDict):
     user_input: str
+    knowledge_base: Annotated[list, add_messages]
     preprocessed_data: Dict[str, Any]
     analysis_node1_response: Annotated[list, add_messages]
     analysis_node2_response: Annotated[list, add_messages]
@@ -16,6 +17,9 @@ class AgentGraphState(TypedDict):
 def get_agent_graph_state(state: AgentGraphState, state_key: str):
     if state_key == "user_input":
         return state["user_input"]
+    
+    elif state_key == "knowledge_base":
+        return state["knowledge_base"]
 
     elif state_key == "preprocessed_data":
         return state["preprocessed_data"]
@@ -73,6 +77,7 @@ def get_agent_graph_state(state: AgentGraphState, state_key: str):
 
 # Initialize the state
 state = {
+    "knowledge_base":[],
     "user_input": "",
     "preprocessed_data": {},
     "analysis_node1_response": [],

@@ -91,11 +91,16 @@ class AnalysisNode2Agent(Agent):
         # Correctly extract analysis_node1 results from state
         analysis_node1_message = state["analysis_node1_response"][-1]
         analysis_node1_results = json.loads(analysis_node1_message.content)
+        
+        # Correctly extract knowledgeBase data from state
+        knowledge_base_message = state["knowledge_base"][0]
+        knowledge_base = json.loads(knowledge_base_message.content)        
 
         messages = [
             {"role": "system", "content": analysis_node2_prompt.format(
                 text=preprocessed_data['text'],
-                analysis_results=json.dumps(analysis_node1_results, indent=2)
+                analysis_results=json.dumps(analysis_node1_results, indent=2),
+                knowledge_base=json.dumps(knowledge_base,indent=2)
             )},
             {"role": "user", "content": "Please provide your analysis."}
         ]
@@ -129,11 +134,16 @@ class FeedbackGenerationAgent(Agent):
         # Correctly extract analysis_node2 results from state
         analysis_node2_message = state["analysis_node2_response"][-1]
         analysis_node2_results = json.loads(analysis_node2_message.content)
+        
+        # Correctly extract knowledgeBase data from state
+        knowledge_base_message = state["knowledge_base"][0]
+        knowledge_base = json.loads(knowledge_base_message.content) 
 
         messages = [
             {"role": "system", "content": feedback_generation_prompt.format(
                 text=preprocessed_data['text'],
-                analysis_results=json.dumps({**analysis_node1_results, **analysis_node2_results}, indent=2)
+                analysis_results=json.dumps({**analysis_node1_results, **analysis_node2_results}, indent=2),
+                knowledge_base=json.dumps(knowledge_base,indent=2)
             )},
             {"role": "user", "content": "Please provide your detailed feedback."}
         ]
@@ -164,10 +174,15 @@ class ScoringAgent(Agent):
         # Correctly extract analysis_node2 results from state
         analysis_node2_message = state["analysis_node2_response"][-1]
         analysis_node2_results = json.loads(analysis_node2_message.content)
+        
+        # Correctly extract knowledgeBase data from state
+        knowledge_base_message = state["knowledge_base"][0]
+        knowledge_base = json.loads(knowledge_base_message.content) 
 
         messages = [
             {"role": "system", "content": scoring_prompt.format(
-                analysis_results=json.dumps({**analysis_node1_results, **analysis_node2_results}, indent=2)
+                analysis_results=json.dumps({**analysis_node1_results, **analysis_node2_results}, indent=2),
+                knowledge_base=json.dumps(knowledge_base,indent=2)
             )},
             {"role": "user", "content": "Please provide the IELTS writing score breakdown."}
         ]
@@ -199,11 +214,16 @@ class ParaphrasingAgent(Agent):
             # Correctly extract scoring results from state
             scoring_message = state["scoring_response"][-1]
             scoring_results = json.loads(scoring_message.content)
+            
+            # Correctly extract knowledgeBase data from state
+            knowledge_base_message = state["knowledge_base"][0]
+            knowledge_base = json.loads(knowledge_base_message.content) 
 
             messages = [
                 {"role": "system", "content": paraphrasing_prompt.format(
                     text=preprocessed_data['text'],
-                    scores=json.dumps(scoring_results, indent=2)
+                    scores=json.dumps(scoring_results, indent=2),
+                    knowledge_base=json.dumps(knowledge_base,indent=2)
                 )},
                 {"role": "user", "content": "Please provide the improved, Band 8 level paraphrased version."}
             ]

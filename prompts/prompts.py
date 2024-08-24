@@ -12,11 +12,16 @@ Consider the following:
    - Is there a clear progression of ideas?
    - Is there appropriate use of cohesive devices?
 
+Use the relevant content in Knowledge Base during your analysis
+
 Text to analyze:
 {text}
 
 Previous analysis results:
 {analysis_results}
+
+Knowledge Base:
+{knowledge_base}
 
 Provide a detailed analysis of task achievement and coherence, including specific examples from the text.
 """
@@ -53,11 +58,16 @@ Use the analysis results to guide your feedback. Focus on:
 3. Coherence and cohesion
 4. Overall writing style
 
+Use the relevant content in Knowledge Base for feedback
+
 Text:
 {text}
 
 Analysis results:
 {analysis_results}
+
+Knowledge Base:
+{knowledge_base}
 
 Provide specific examples from the text and suggest improvements. 
 Your feedback should be constructive and actionable.
@@ -105,9 +115,13 @@ As an IELTS examiner, provide a detailed score breakdown for the writing sample 
 4. Grammatical Range and Accuracy
 
 Use the provided analysis results to inform your scoring. For each criterion, provide a score out of 9 and a brief justification.
+Use the relevant content in Knowledge Base while scoring
 
 Analysis results:
 {analysis_results}
+
+Knowledge Base:
+{knowledge_base}
 
 Provide the overall band score as well as individual scores for each criterion.
 """
@@ -161,11 +175,16 @@ Focus on enhancing:
 3. Lexical Resource
 4. Grammatical Range and Accuracy
 
+Use the relevant content in Knowledge Base while paraphrasing
+
 Original text:
 {text}
 
 Current scores:
 {scores}
+
+Knowledge Base:
+{knowledge_base}
 
 Please provide:
 1. A paraphrased version that addresses the weaknesses identified in the scoring, 

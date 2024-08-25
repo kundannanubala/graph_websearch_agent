@@ -6,17 +6,24 @@ from models.openai_models import get_open_ai, get_open_ai_json
 from models.ollama_models import OllamaModel, OllamaJSONModel
 from models.vllm_models import VllmJSONModel, VllmModel
 from models.groq_models import GroqModel, GroqJSONModel
-from models.claude_models import ClaudModel, ClaudJSONModel
+from models.claude_models import ClaudVertexModel, ClaudVertexJSONModel
 from models.gemini_models import GeminiModel, GeminiJSONModel
+from langchain_core.messages import HumanMessage
+import json
+from datetime import datetime
 from prompts.prompts import (
-    planner_prompt_template,
-    selector_prompt_template,
-    reporter_prompt_template,
-    reviewer_prompt_template,
-    router_prompt_template
+    analysis_node2_prompt,
+    feedback_generation_prompt,
+    scoring_prompt,
+    paraphrasing_prompt
 )
 from utils.helper_functions import get_current_utc_datetime, check_for_content
 from states.state import AgentGraphState
+from pymongo import MongoClient
+
+# # MongoDB connection setup
+# client = MongoClient('mongodb://localhost:27017/')
+# db = client['FeedParser']  # This is your database name
 
 class Agent:
     def __init__(self, state: AgentGraphState, model=None, server=None, temperature=0, model_endpoint=None, stop=None, guided_json=None):
@@ -55,10 +62,10 @@ class Agent:
                 temperature=self.temperature
             )
         if self.server == 'claude':
-            return ClaudJSONModel(
+            return ClaudVertexJSONModel(
                 model=self.model,
                 temperature=self.temperature
-            ) if json_model else ClaudModel(
+            ) if json_model else ClaudVertexModel(
                 model=self.model,
                 temperature=self.temperature
             )
@@ -74,145 +81,187 @@ class Agent:
     def update_state(self, key, value):
         self.state = {**self.state, key: value}
 
-class PlannerAgent(Agent):
-    def invoke(self, research_question, prompt=planner_prompt_template, feedback=None):
-        feedback_value = feedback() if callable(feedback) else feedback
-        feedback_value = check_for_content(feedback_value)
 
-        planner_prompt = prompt.format(
-            feedback=feedback_value,
-            datetime=get_current_utc_datetime()
-        )
+class AnalysisNode2Agent(Agent):
+    def invoke(self, state):
+        # Correctly extract preprocessed data from state
+        preprocessed_data_message = state["preprocessed_data"][0]
+        preprocessed_data = json.loads(preprocessed_data_message.content)
 
-        messages = [
-            {"role": "system", "content": planner_prompt},
-            {"role": "user", "content": f"research question: {research_question}"}
-        ]
-
-        llm = self.get_llm()
-        ai_msg = llm.invoke(messages)
-        response = ai_msg.content
-
-        self.update_state("planner_response", response)
-        print(colored(f"Planner 👩🏿‍💻: {response}", 'cyan'))
-        return self.state
-
-class SelectorAgent(Agent):
-    def invoke(self, research_question, prompt=selector_prompt_template, feedback=None, previous_selections=None, serp=None):
-        feedback_value = feedback() if callable(feedback) else feedback
-        previous_selections_value = previous_selections() if callable(previous_selections) else previous_selections
-
-        feedback_value = check_for_content(feedback_value)
-        previous_selections_value = check_for_content(previous_selections_value)
-
-        selector_prompt = prompt.format(
-            feedback=feedback_value,
-            previous_selections=previous_selections_value,
-            serp=serp().content,
-            datetime=get_current_utc_datetime()
-        )
-
-        messages = [
-            {"role": "system", "content": selector_prompt},
-            {"role": "user", "content": f"research question: {research_question}"}
-        ]
-
-        llm = self.get_llm()
-        ai_msg = llm.invoke(messages)
-        response = ai_msg.content
-
-        print(colored(f"selector 🧑🏼‍💻: {response}", 'green'))
-        self.update_state("selector_response", response)
-        return self.state
-
-class ReporterAgent(Agent):
-    def invoke(self, research_question, prompt=reporter_prompt_template, feedback=None, previous_reports=None, research=None):
-        feedback_value = feedback() if callable(feedback) else feedback
-        previous_reports_value = previous_reports() if callable(previous_reports) else previous_reports
-        research_value = research() if callable(research) else research
-
-        feedback_value = check_for_content(feedback_value)
-        previous_reports_value = check_for_content(previous_reports_value)
-        research_value = check_for_content(research_value)
+        # Correctly extract analysis_node1 results from state
+        analysis_node1_message = state["analysis_node1_response"][-1]
+        analysis_node1_results = json.loads(analysis_node1_message.content)
         
-        reporter_prompt = prompt.format(
-            feedback=feedback_value,
-            previous_reports=previous_reports_value,
-            datetime=get_current_utc_datetime(),
-            research=research_value
-        )
+        # Correctly extract knowledgeBase data from state
+        knowledge_base_message = state["knowledge_base"][0]
+        knowledge_base = json.loads(knowledge_base_message.content)        
 
         messages = [
-            {"role": "system", "content": reporter_prompt},
-            {"role": "user", "content": f"research question: {research_question}"}
-        ]
-
-        llm = self.get_llm(json_model=False)
-        ai_msg = llm.invoke(messages)
-        response = ai_msg.content
-
-        print(colored(f"Reporter 👨‍💻: {response}", 'yellow'))
-        self.update_state("reporter_response", response)
-        return self.state
-
-class ReviewerAgent(Agent):
-    def invoke(self, research_question, prompt=reviewer_prompt_template, reporter=None, feedback=None):
-        reporter_value = reporter() if callable(reporter) else reporter
-        feedback_value = feedback() if callable(feedback) else feedback
-
-        reporter_value = check_for_content(reporter_value)
-        feedback_value = check_for_content(feedback_value)
-        
-        reviewer_prompt = prompt.format(
-            reporter=reporter_value,
-            state=self.state,
-            feedback=feedback_value,
-            datetime=get_current_utc_datetime(),
-        )
-
-        messages = [
-            {"role": "system", "content": reviewer_prompt},
-            {"role": "user", "content": f"research question: {research_question}"}
+            {"role": "system", "content": analysis_node2_prompt.format(
+                text=preprocessed_data['text'],
+                analysis_results=json.dumps(analysis_node1_results, indent=2),
+                knowledge_base=json.dumps(knowledge_base,indent=2)
+            )},
+            {"role": "user", "content": "Please provide your analysis."}
         ]
 
         llm = self.get_llm()
         ai_msg = llm.invoke(messages)
-        response = ai_msg.content
 
-        print(colored(f"Reviewer 👩🏽‍⚖️: {response}", 'magenta'))
-        self.update_state("reviewer_response", response)
-        return self.state
+        # Store the result in the state
+        if "analysis_node2_response" not in state:
+            state["analysis_node2_response"] = []
+        state["analysis_node2_response"].append(
+            HumanMessage(role="system", content=ai_msg.content)
+        )
+        response=ai_msg.content
+        with open('D:/VentureInternship/AI Agent/ProjectK/response.txt','a') as file:
+            file.write(f"Analysis Node 2 response:\n{response}\n")
+
+        return {"analysis_node2_response": state["analysis_node2_response"]}
     
-class RouterAgent(Agent):
-    def invoke(self, feedback=None, research_question=None, prompt=router_prompt_template):
-        feedback_value = feedback() if callable(feedback) else feedback
-        feedback_value = check_for_content(feedback_value)
 
-        router_prompt = prompt.format(feedback=feedback_value)
+class FeedbackGenerationAgent(Agent):
+    def invoke(self, state):
+        # Correctly extract preprocessed data from state
+        preprocessed_data_message = state["preprocessed_data"][0]
+        preprocessed_data = json.loads(preprocessed_data_message.content)
+
+        # Correctly extract analysis_node1 results from state
+        analysis_node1_message = state["analysis_node1_response"][-1]
+        analysis_node1_results = json.loads(analysis_node1_message.content)
+
+        # Correctly extract analysis_node2 results from state
+        analysis_node2_message = state["analysis_node2_response"][-1]
+        analysis_node2_results = json.loads(analysis_node2_message.content)
+        
+        # Correctly extract knowledgeBase data from state
+        knowledge_base_message = state["knowledge_base"][0]
+        knowledge_base = json.loads(knowledge_base_message.content) 
 
         messages = [
-            {"role": "system", "content": router_prompt},
-            {"role": "user", "content": f"research question: {research_question}"}
+            {"role": "system", "content": feedback_generation_prompt.format(
+                text=preprocessed_data['text'],
+                analysis_results=json.dumps({**analysis_node1_results, **analysis_node2_results}, indent=2),
+                knowledge_base=json.dumps(knowledge_base,indent=2)
+            )},
+            {"role": "user", "content": "Please provide your detailed feedback."}
         ]
 
         llm = self.get_llm()
         ai_msg = llm.invoke(messages)
-        response = ai_msg.content
 
-        print(colored(f"Router 🧭: {response}", 'blue'))
-        self.update_state("router_response", response)
-        return self.state
+        # Store the result in the state
+        if "feedback_response" not in state:
+            state["feedback_response"] = []
+        state["feedback_response"].append(
+            HumanMessage(role="system", content=ai_msg.content)
+        )
+        response=ai_msg.content
+        with open('D:/VentureInternship/AI Agent/ProjectK/response.txt','a') as file:
+            file.write(f"FeedBack Node response:\n{response}\n")
+        
 
-class FinalReportAgent(Agent):
-    def invoke(self, final_response=None):
-        final_response_value = final_response() if callable(final_response) else final_response
-        response = final_response_value.content
+        return {"feedback_response": state["feedback_response"]}   
+    
 
-        print(colored(f"Final Report 📝: {response}", 'blue'))
-        self.update_state("final_reports", response)
-        return self.state
+class ScoringAgent(Agent):
+    def invoke(self, state):
+        # Correctly extract analysis_node1 results from state
+        analysis_node1_message = state["analysis_node1_response"][-1]
+        analysis_node1_results = json.loads(analysis_node1_message.content)
 
-class EndNodeAgent(Agent):
-    def invoke(self):
-        self.update_state("end_chain", "end_chain")
-        return self.state
+        # Correctly extract analysis_node2 results from state
+        analysis_node2_message = state["analysis_node2_response"][-1]
+        analysis_node2_results = json.loads(analysis_node2_message.content)
+        
+        # Correctly extract knowledgeBase data from state
+        knowledge_base_message = state["knowledge_base"][0]
+        knowledge_base = json.loads(knowledge_base_message.content) 
+
+        messages = [
+            {"role": "system", "content": scoring_prompt.format(
+                analysis_results=json.dumps({**analysis_node1_results, **analysis_node2_results}, indent=2),
+                knowledge_base=json.dumps(knowledge_base,indent=2)
+            )},
+            {"role": "user", "content": "Please provide the IELTS writing score breakdown."}
+        ]
+
+        llm = self.get_llm()
+        ai_msg = llm.invoke(messages)
+
+        # Store the result in the state
+        if "scoring_response" not in state:
+            state["scoring_response"] = []
+        state["scoring_response"].append(
+            HumanMessage(role="system", content=ai_msg.content)
+        )
+        response=ai_msg.content
+        with open('D:/VentureInternship/AI Agent/ProjectK/response.txt','a') as file:
+            file.write(f"Scoring Node response:\n{response}\n")
+        
+
+        return {"scoring_response": state["scoring_response"]}    
+    
+
+class ParaphrasingAgent(Agent):
+    def invoke(self, state):
+        try:
+            # Correctly extract preprocessed data from state
+            preprocessed_data_message = state["preprocessed_data"][0]
+            preprocessed_data = json.loads(preprocessed_data_message.content)
+
+            # Correctly extract scoring results from state
+            scoring_message = state["scoring_response"][-1]
+            scoring_results = json.loads(scoring_message.content)
+            
+            # Correctly extract knowledgeBase data from state
+            knowledge_base_message = state["knowledge_base"][0]
+            knowledge_base = json.loads(knowledge_base_message.content) 
+
+            messages = [
+                {"role": "system", "content": paraphrasing_prompt.format(
+                    text=preprocessed_data['text'],
+                    scores=json.dumps(scoring_results, indent=2),
+                    knowledge_base=json.dumps(knowledge_base,indent=2)
+                )},
+                {"role": "user", "content": "Please provide the improved, Band 8 level paraphrased version."}
+            ]
+
+            llm = self.get_llm()
+            ai_msg = llm.invoke(messages)
+
+            # Attempt to parse the response as JSON
+            try:
+                response_content = json.loads(ai_msg.content)
+            except json.JSONDecodeError:
+                # If parsing fails, use the raw text
+                response_content = {"raw_text": ai_msg.content}
+
+            # Store the result in the state
+            if "paraphrased_response" not in state:
+                state["paraphrased_response"] = []
+            state["paraphrased_response"].append(
+                HumanMessage(role="system", content=json.dumps(response_content))
+            )
+
+            with open('D:/VentureInternship/AI Agent/ProjectK/response.txt','a') as file:
+                file.write(f"Paraphrasing Node response:\n{json.dumps(response_content, indent=2)}\n")
+
+            return {"paraphrased_response": state["paraphrased_response"]}
+
+        except Exception as e:
+            error_message = f"Error in ParaphrasingAgent: {str(e)}"
+            print("ERROR", error_message)
+            error_response = {"error": error_message}
+
+            if "paraphrased_response" not in state:
+                state["paraphrased_response"] = []
+            state["paraphrased_response"].append(
+                HumanMessage(role="system", content=json.dumps(error_response))
+            )
+
+            with open('D:/VentureInternship/AI Agent/ProjectK/response.txt','a') as file:
+                file.write(f"Paraphrasing Node error:\n{json.dumps(error_response, indent=2)}\n")
+
+            return {"paraphrased_response": state["paraphrased_response"]}

@@ -1,81 +1,89 @@
-from typing import TypedDict, Annotated
+from typing import TypedDict, Annotated, Dict, Any
 from langgraph.graph.message import add_messages
 
 # Define the state object for the agent graph
 class AgentGraphState(TypedDict):
-    research_question: str
-    planner_response: Annotated[list, add_messages]
-    selector_response: Annotated[list, add_messages]
-    reporter_response: Annotated[list, add_messages]
-    reviewer_response: Annotated[list, add_messages]
-    router_response: Annotated[list, add_messages]
-    serper_response: Annotated[list, add_messages]
-    scraper_response: Annotated[list, add_messages]
-    final_reports: Annotated[list, add_messages]
-    end_chain: Annotated[list, add_messages]
+    user_input: str
+    knowledge_base: Annotated[list, add_messages]
+    preprocessed_data: Dict[str, Any]
+    analysis_node1_response: Annotated[list, add_messages]
+    analysis_node2_response: Annotated[list, add_messages]
+    feedback_response: Annotated[list, add_messages]
+    scoring_response: Annotated[list, add_messages]
+    paraphrased_response: Annotated[list, add_messages]
+    formatted_report: Annotated[list, add_messages]
 
-# Define the nodes in the agent graph
-def get_agent_graph_state(state:AgentGraphState, state_key:str):
-    if state_key == "planner_all":
-        return state["planner_response"]
-    elif state_key == "planner_latest":
-        if state["planner_response"]:
-            return state["planner_response"][-1]
-        else:
-            return state["planner_response"]
+# Define the function to get agent graph state
+def get_agent_graph_state(state: AgentGraphState, state_key: str):
+    if state_key == "user_input":
+        return state["user_input"]
     
-    elif state_key == "selector_all":
-        return state["selector_response"]
-    elif state_key == "selector_latest":
-        if state["selector_response"]:
-            return state["selector_response"][-1]
+    elif state_key == "knowledge_base":
+        return state["knowledge_base"]
+
+    elif state_key == "preprocessed_data":
+        return state["preprocessed_data"]
+
+    elif state_key == "analysis_node1_all":
+        return state["analysis_node1_response"]
+    elif state_key == "analysis_node1_latest":
+        if state["analysis_node1_response"]:
+            return state["analysis_node1_response"][-1]
         else:
-            return state["selector_response"]
-    
-    elif state_key == "reporter_all":
-        return state["reporter_response"]
-    elif state_key == "reporter_latest":
-        if state["reporter_response"]:
-            return state["reporter_response"][-1]
+            return state["analysis_node1_response"]
+
+    elif state_key == "analysis_node2_all":
+        return state["analysis_node2_response"]
+    elif state_key == "analysis_node2_latest":
+        if state["analysis_node2_response"]:
+            return state["analysis_node2_response"][-1]
         else:
-            return state["reporter_response"]
-    
-    elif state_key == "reviewer_all":
-        return state["reviewer_response"]
-    elif state_key == "reviewer_latest":
-        if state["reviewer_response"]:
-            return state["reviewer_response"][-1]
+            return state["analysis_node2_response"]
+
+    elif state_key == "feedback_all":
+        return state["feedback_response"]
+    elif state_key == "feedback_latest":
+        if state["feedback_response"]:
+            return state["feedback_response"][-1]
         else:
-            return state["reviewer_response"]
-        
-    elif state_key == "serper_all":
-        return state["serper_response"]
-    elif state_key == "serper_latest":
-        if state["serper_response"]:
-            return state["serper_response"][-1]
+            return state["feedback_response"]
+
+    elif state_key == "scoring_all":
+        return state["scoring_response"]
+    elif state_key == "scoring_latest":
+        if state["scoring_response"]:
+            return state["scoring_response"][-1]
         else:
-            return state["serper_response"]
-    
-    elif state_key == "scraper_all":
-        return state["scraper_response"]
-    elif state_key == "scraper_latest":
-        if state["scraper_response"]:
-            return state["scraper_response"][-1]
+            return state["scoring_response"]
+
+    elif state_key == "paraphrased_all":
+        return state["paraphrased_response"]
+    elif state_key == "paraphrased_latest":
+        if state["paraphrased_response"]:
+            return state["paraphrased_response"][-1]
         else:
-            return state["scraper_response"]
-        
+            return state["paraphrased_response"]
+
+    elif state_key == "formatted_report_all":
+        return state["formatted_report"]
+    elif state_key == "formatted_report_latest":
+        if state["formatted_report"]:
+            return state["formatted_report"][-1]
+        else:
+            return state["formatted_report"]
+
     else:
         return None
-    
+
+# Initialize the state
 state = {
-    "research_question":"",
-    "planner_response": [],
-    "selector_response": [],
-    "reporter_response": [],
-    "reviewer_response": [],
-    "router_response": [],
-    "serper_response": [],
-    "scraper_response": [],
-    "final_reports": [],
-    "end_chain": []
+    "knowledge_base":[],
+    "user_input": "",
+    "preprocessed_data": {},
+    "analysis_node1_response": [],
+    "analysis_node2_response": [],
+    "feedback_response": [],
+    "scoring_response": [],
+    "paraphrased_response": [],
+    "formatted_report": [],
 }

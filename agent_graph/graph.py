@@ -1,207 +1,113 @@
 import json
-import ast
-from langchain_core.runnables import RunnableLambda
+from typing import Dict, Any
 from langgraph.graph import StateGraph, END
-from typing import TypedDict, Annotated
 from langchain_core.messages import HumanMessage
-from models.openai_models import get_open_ai_json
-from langgraph.checkpoint.sqlite import SqliteSaver
+from termcolor import colored
 from agents.agents import (
-    PlannerAgent,
-    SelectorAgent,
-    ReporterAgent,
-    ReviewerAgent,
-    RouterAgent,
-    FinalReportAgent,
-    EndNodeAgent
+    AnalysisNode2Agent,
+    FeedbackGenerationAgent,
+    ScoringAgent,
+    ParaphrasingAgent,
 )
-from prompts.prompts import (
-    reviewer_prompt_template, 
-    planner_prompt_template, 
-    selector_prompt_template, 
-    reporter_prompt_template,
-    router_prompt_template,
-    reviewer_guided_json,
-    selector_guided_json,
-    planner_guided_json,
-    router_guided_json
-
-)
-from tools.google_serper import get_google_serper
-from tools.basic_scraper import scrape_website
+from tools.preprocessing_tool import preprocessing_tool
+from tools.analysis_node1_tool import analysis_node1_tool
+from tools.knowledge_base_loader import knowledge_base_loader
+from tools.format_report import format_report
 from states.state import AgentGraphState, get_agent_graph_state, state
 
 def create_graph(server=None, model=None, stop=None, model_endpoint=None, temperature=0):
     graph = StateGraph(AgentGraphState)
 
+    # KowledgeBaseLoading Node
     graph.add_node(
-        "planner", 
-        lambda state: PlannerAgent(
-            state=state,
-            model=model,
-            server=server,
-            guided_json=planner_guided_json,
-            stop=stop,
-            model_endpoint=model_endpoint,
-            temperature=temperature
-        ).invoke(
-            research_question=state["research_question"],
-            feedback=lambda: get_agent_graph_state(state=state, state_key="reviewer_latest"),
-            # previous_plans=lambda: get_agent_graph_state(state=state, state_key="planner_all"),
-            prompt=planner_prompt_template
-        )
+        "knowledgeBase",
+        lambda state: knowledge_base_loader(state)
+    )
+    # Preprocessing Node
+    graph.add_node(
+        "preprocessing",
+        lambda state: preprocessing_tool(state)
     )
 
+    # Analysis Node 1
     graph.add_node(
-        "selector",
-        lambda state: SelectorAgent(
-            state=state,
-            model=model,
-            server=server,
-            guided_json=selector_guided_json,
-            stop=stop,
-            model_endpoint=model_endpoint,
-            temperature=temperature
-        ).invoke(
-            research_question=state["research_question"],
-            feedback=lambda: get_agent_graph_state(state=state, state_key="reviewer_latest"),
-            previous_selections=lambda: get_agent_graph_state(state=state, state_key="selector_all"),
-            serp=lambda: get_agent_graph_state(state=state, state_key="serper_latest"),
-            prompt=selector_prompt_template,
-        )
+        "analysis_node1",
+        lambda state: analysis_node1_tool(state)
     )
 
+    # Analysis Node 2
     graph.add_node(
-        "reporter", 
-        lambda state: ReporterAgent(
+        "analysis_node2",
+        lambda state: AnalysisNode2Agent(
             state=state,
             model=model,
             server=server,
             stop=stop,
             model_endpoint=model_endpoint,
             temperature=temperature
-        ).invoke(
-            research_question=state["research_question"],
-            feedback=lambda: get_agent_graph_state(state=state, state_key="reviewer_latest"),
-            previous_reports=lambda: get_agent_graph_state(state=state, state_key="reporter_all"),
-            research=lambda: get_agent_graph_state(state=state, state_key="scraper_latest"),
-            prompt=reporter_prompt_template
-        )
+        ).invoke(state)
     )
 
+    # Feedback Generation Node
     graph.add_node(
-        "reviewer", 
-        lambda state: ReviewerAgent(
+        "feedback_generation",
+        lambda state: FeedbackGenerationAgent(
             state=state,
             model=model,
             server=server,
-            guided_json=reviewer_guided_json,
             stop=stop,
             model_endpoint=model_endpoint,
             temperature=temperature
-        ).invoke(
-            research_question=state["research_question"],
-            feedback=lambda: get_agent_graph_state(state=state, state_key="reviewer_all"),
-            # planner=lambda: get_agent_graph_state(state=state, state_key="planner_latest"),
-            # selector=lambda: get_agent_graph_state(state=state, state_key="selector_latest"),
-            reporter=lambda: get_agent_graph_state(state=state, state_key="reporter_latest"),
-            # planner_agent=planner_prompt_template,
-            # selector_agent=selector_prompt_template,
-            # reporter_agent=reporter_prompt_template,
-            # serp=lambda: get_agent_graph_state(state=state, state_key="serper_latest"),
-            prompt=reviewer_prompt_template
-        )
+        ).invoke(state)
     )
 
+    # Scoring Node
     graph.add_node(
-        "router", 
-        lambda state: RouterAgent(
+        "scoring",
+        lambda state: ScoringAgent(
             state=state,
             model=model,
             server=server,
-            guided_json=router_guided_json,
             stop=stop,
             model_endpoint=model_endpoint,
             temperature=temperature
-        ).invoke(
-            research_question=state["research_question"],
-            feedback=lambda: get_agent_graph_state(state=state, state_key="reviewer_all"),
-            # planner=lambda: get_agent_graph_state(state=state, state_key="planner_latest"),
-            # selector=lambda: get_agent_graph_state(state=state, state_key="selector_latest"),
-            # reporter=lambda: get_agent_graph_state(state=state, state_key="reporter_latest"),
-            # planner_agent=planner_prompt_template,
-            # selector_agent=selector_prompt_template,
-            # reporter_agent=reporter_prompt_template,
-            # serp=lambda: get_agent_graph_state(state=state, state_key="serper_latest"),
-            prompt=router_prompt_template
-        )
+        ).invoke(state)
     )
 
-
+    # Paraphrasing Node
     graph.add_node(
-        "serper_tool",
-        lambda state: get_google_serper(
+        "paraphrasing",
+        lambda state: ParaphrasingAgent(
             state=state,
-            plan=lambda: get_agent_graph_state(state=state, state_key="planner_latest")
-        )
+            model=model,
+            server=server,
+            stop=stop,
+            model_endpoint=model_endpoint,
+            temperature=temperature
+        ).invoke(state)
     )
-
+    
     graph.add_node(
-        "scraper_tool",
-        lambda state: scrape_website(
-            state=state,
-            research=lambda: get_agent_graph_state(state=state, state_key="selector_latest")
-        )
+    "report_generation",
+    lambda state: format_report()
     )
 
-    graph.add_node(
-        "final_report", 
-        lambda state: FinalReportAgent(
-            state=state
-        ).invoke(
-            final_response=lambda: get_agent_graph_state(state=state, state_key="reporter_latest")
-        )
-    )
 
-    graph.add_node("end", lambda state: EndNodeAgent(state).invoke())
+    # Set the entry point
+    graph.set_entry_point("knowledgeBase")
 
-    # Define the edges in the agent graph
-    def pass_review(state: AgentGraphState):
-        review_list = state["router_response"]
-        if review_list:
-            review = review_list[-1]
-        else:
-            review = "No review"
+    # Set the finish point
+    graph.set_finish_point("report_generation")
 
-        if review != "No review":
-            if isinstance(review, HumanMessage):
-                review_content = review.content
-            else:
-                review_content = review
-            
-            review_data = json.loads(review_content)
-            next_agent = review_data["next_agent"]
-        else:
-            next_agent = "end"
-
-        return next_agent
-
-    # Add edges to the graph
-    graph.set_entry_point("planner")
-    graph.set_finish_point("end")
-    graph.add_edge("planner", "serper_tool")
-    graph.add_edge("serper_tool", "selector")
-    graph.add_edge("selector", "scraper_tool")
-    graph.add_edge("scraper_tool", "reporter")
-    graph.add_edge("reporter", "reviewer")
-    graph.add_edge("reviewer", "router")
-
-    graph.add_conditional_edges(
-        "router",
-        lambda state: pass_review(state=state),
-    )
-
-    graph.add_edge("final_report", "end")
+    # Add edges to connect the nodes
+    graph.add_edge("knowledgeBase", "preprocessing")
+    graph.add_edge("preprocessing", "analysis_node1")
+    graph.add_edge("analysis_node1", "analysis_node2")
+    graph.add_edge("analysis_node2", "feedback_generation")
+    graph.add_edge("feedback_generation", "scoring")
+    graph.add_edge("scoring", "paraphrasing")
+    graph.add_edge("paraphrasing", "report_generation")
+    graph.set_finish_point("report_generation")
 
     return graph
 

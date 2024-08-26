@@ -50,8 +50,11 @@ def improved_grammar_check(text):
     return errors
 
 def analysis_node1_tool(state):
-    # Extract preprocessed data from the HumanMessage object
-    preprocessed_data_message = state["preprocessed_data"][0]
+    # Extract preprocessed data from the messages
+    preprocessed_data_message = next((msg for msg in state["messages"] if msg.role == "preprocessing"), None)
+    if not preprocessed_data_message:
+        raise ValueError("Preprocessed data not found in state")
+
     preprocessed_data = json.loads(preprocessed_data_message.content)
 
     text = preprocessed_data["text"]
@@ -88,18 +91,17 @@ def analysis_node1_tool(state):
         "tfidf_similarity": tfidf_similarity
     }
 
-    # Store analysis_results into a file (if needed)
-    with open("D:/VentureInternship/AI Agent/ProjectK/analysis_node1_results.json", 'w') as file:
-        json.dump(analysis_results, file, indent=4)
-
-    with open("D:/VentureInternship/AI Agent/ProjectK/response.txt", "a") as file:
-        file.write(f"\nAnalysis_Node1_Tool")
+    # # Store analysis_results into a file (if needed)
+    # with open("analysis_node1_results.json", 'w') as file:
+    #     json.dump(analysis_results, file, indent=4)
 
     # Update state with the correct message structure
-    if "analysis_node1_response" not in state:
-        state["analysis_node1_response"] = []
-    state["analysis_node1_response"].append(
-        HumanMessage(role="system", content=json.dumps(analysis_results))
+    state["messages"].append(
+        HumanMessage(role="analysis_node1", content=json.dumps(analysis_results))
     )
+            # Log the action
+    with open("D:/VentureInternship/AI Agent/ProjectK/response.txt", "a") as log_file:
+        log_file.write(f"\nAnalysis Node 1: {json.dumps(analysis_results)}\n")
 
-    return {"analysis_node1_response": state["analysis_node1_response"]}
+
+    return {"messages": state["messages"]}

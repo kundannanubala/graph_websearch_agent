@@ -36,16 +36,17 @@ def preprocessing_tool(state):
         "named_entities": named_entities
     }
 
-    # Store preprocessed_data into a file (if needed)
-    with open("D:/VentureInternship/AI Agent/ProjectK/preprocessed_data.json", 'w') as file:
-        json.dump(preprocessed_data, file, indent=4)
-
-    with open("D:/VentureInternship/AI Agent/ProjectK/response.txt", "w") as file:
-        file.write(f"\nPreprocessing_Tool")
+    # # Store preprocessed_data into a file (if needed)
+    # with open("preprocessed_data.json", 'w') as file:
+    #     json.dump(preprocessed_data, file, indent=4)
 
     # Update state with the correct message structure
-    state["preprocessed_data"] = [
-        HumanMessage(role="system", content=json.dumps(preprocessed_data))
-    ]
+    state["messages"].append(
+        HumanMessage(role="preprocessing", content=json.dumps(preprocessed_data))
+    )
+        # Log the action
+    with open("D:/VentureInternship/AI Agent/ProjectK/response.txt", "a") as log_file:
+        log_file.write(f"\nPreprocessing Node{json.dumps(preprocessed_data)}\n")
+    
 
-    return {"preprocessed_data": state["preprocessed_data"]}
+    return {"messages": state["messages"]}

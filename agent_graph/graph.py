@@ -1,113 +1,84 @@
-import json
-from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage
-from termcolor import colored
 from agents.agents import (
-    AnalysisNode2Agent,
-    FeedbackGenerationAgent,
-    ScoringAgent,
-    ParaphrasingAgent,
+    FlexibleAgent
 )
 from tools.preprocessing_tool import preprocessing_tool
 from tools.analysis_node1_tool import analysis_node1_tool
 from tools.knowledge_base_loader import knowledge_base_loader
 from tools.format_report import format_report
-from states.state import AgentGraphState, get_agent_graph_state, state
+from states.state import AgentGraphState
+from prompts.prompts import (
+    analysis_node2_prompt,
+    feedback_generation_prompt,
+    scoring_prompt,
+    paraphrasing_prompt
+)
+
+plan = {
+    "nodes": [
+        {"name": "knowledgeBase", "type": "tool", "function": knowledge_base_loader},
+        {"name": "preprocessing", "type": "tool", "function": preprocessing_tool},
+        {"name": "analysis_node1", "type": "tool", "function": analysis_node1_tool},
+        {"name": "analysis_node2", "type": "agent", "class": FlexibleAgent, 
+         "prompt": analysis_node2_prompt, 
+         "variables": ["preprocessing", "analysis_node1", "knowledgeBase"],
+         "user_content": "Please provide your analysis."},
+        {"name": "feedback_generation", "type": "agent", "class": FlexibleAgent,
+         "prompt": feedback_generation_prompt,
+         "variables": ["preprocessing", "analysis_node1", "analysis_node2", "knowledgeBase"],
+         "user_content": "Please provide your detailed feedback."},
+        {"name": "scoring", "type": "agent", "class": FlexibleAgent,
+         "prompt": scoring_prompt,
+         "variables": ["analysis_node1", "analysis_node2", "knowledgeBase"],
+         "user_content": "Please provide the IELTS writing score breakdown."},
+        {"name": "paraphrasing", "type": "agent", "class": FlexibleAgent,
+         "prompt": paraphrasing_prompt,
+         "variables": ["preprocessing", "scoring", "knowledgeBase"],
+         "user_content": "Please provide the improved, Band 8 level paraphrased version."},
+        {"name": "report_generation", "type": "tool", "function": format_report}
+    ],
+    "edges": [
+        ("knowledgeBase", "preprocessing"),
+        ("preprocessing", "analysis_node1"),
+        ("analysis_node1", "analysis_node2"),
+        ("analysis_node2", "feedback_generation"),
+        ("feedback_generation", "scoring"),
+        ("scoring", "paraphrasing"),
+        ("paraphrasing", "report_generation")
+    ],
+    "entry_point": "knowledgeBase",
+    "finish_point": "report_generation"
+}
 
 def create_graph(server=None, model=None, stop=None, model_endpoint=None, temperature=0):
     graph = StateGraph(AgentGraphState)
 
-    # KowledgeBaseLoading Node
-    graph.add_node(
-        "knowledgeBase",
-        lambda state: knowledge_base_loader(state)
-    )
-    # Preprocessing Node
-    graph.add_node(
-        "preprocessing",
-        lambda state: preprocessing_tool(state)
-    )
+    # Dynamically add nodes based on the plan
+    for node in plan["nodes"]:
+        if node["type"] == "tool":
+            graph.add_node(node["name"], node["function"])
+        elif node["type"] == "agent":
+            graph.add_node(
+                node["name"],
+                lambda state, node=node: FlexibleAgent(
+                    state=state,
+                    role_name=node["name"],  # Pass the role name here
+                    model=model,
+                    server=server,
+                    stop=stop,
+                    model_endpoint=model_endpoint,
+                    temperature=temperature
+                ).invoke(state, node["prompt"], node["variables"], node["user_content"])
+            )
 
-    # Analysis Node 1
-    graph.add_node(
-        "analysis_node1",
-        lambda state: analysis_node1_tool(state)
-    )
+    # Dynamically add edges based on the plan
+    for edge in plan["edges"]:
+        graph.add_edge(edge[0], edge[1])
 
-    # Analysis Node 2
-    graph.add_node(
-        "analysis_node2",
-        lambda state: AnalysisNode2Agent(
-            state=state,
-            model=model,
-            server=server,
-            stop=stop,
-            model_endpoint=model_endpoint,
-            temperature=temperature
-        ).invoke(state)
-    )
-
-    # Feedback Generation Node
-    graph.add_node(
-        "feedback_generation",
-        lambda state: FeedbackGenerationAgent(
-            state=state,
-            model=model,
-            server=server,
-            stop=stop,
-            model_endpoint=model_endpoint,
-            temperature=temperature
-        ).invoke(state)
-    )
-
-    # Scoring Node
-    graph.add_node(
-        "scoring",
-        lambda state: ScoringAgent(
-            state=state,
-            model=model,
-            server=server,
-            stop=stop,
-            model_endpoint=model_endpoint,
-            temperature=temperature
-        ).invoke(state)
-    )
-
-    # Paraphrasing Node
-    graph.add_node(
-        "paraphrasing",
-        lambda state: ParaphrasingAgent(
-            state=state,
-            model=model,
-            server=server,
-            stop=stop,
-            model_endpoint=model_endpoint,
-            temperature=temperature
-        ).invoke(state)
-    )
-    
-    graph.add_node(
-    "report_generation",
-    lambda state: format_report()
-    )
-
-
-    # Set the entry point
-    graph.set_entry_point("knowledgeBase")
-
-    # Set the finish point
-    graph.set_finish_point("report_generation")
-
-    # Add edges to connect the nodes
-    graph.add_edge("knowledgeBase", "preprocessing")
-    graph.add_edge("preprocessing", "analysis_node1")
-    graph.add_edge("analysis_node1", "analysis_node2")
-    graph.add_edge("analysis_node2", "feedback_generation")
-    graph.add_edge("feedback_generation", "scoring")
-    graph.add_edge("scoring", "paraphrasing")
-    graph.add_edge("paraphrasing", "report_generation")
-    graph.set_finish_point("report_generation")
+    # Set entry and finish points
+    graph.set_entry_point(plan["entry_point"])
+    graph.set_finish_point(plan["finish_point"])
 
     return graph
 

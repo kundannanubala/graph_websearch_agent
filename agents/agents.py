@@ -82,186 +82,62 @@ class Agent:
         self.state = {**self.state, key: value}
 
 
-class AnalysisNode2Agent(Agent):
-    def invoke(self, state):
-        # Correctly extract preprocessed data from state
-        preprocessed_data_message = state["preprocessed_data"][0]
-        preprocessed_data = json.loads(preprocessed_data_message.content)
+class FlexibleAgent(Agent):
+    def __init__(self, state: AgentGraphState, role_name: str, model=None, server=None, temperature=0, model_endpoint=None, stop=None, guided_json=None):
+        super().__init__(state, model, server, temperature, model_endpoint, stop, guided_json)
+        self.role_name = role_name
 
-        # Correctly extract analysis_node1 results from state
-        analysis_node1_message = state["analysis_node1_response"][-1]
-        analysis_node1_results = json.loads(analysis_node1_message.content)
-        
-        # Correctly extract knowledgeBase data from state
-        knowledge_base_message = state["knowledge_base"][0]
-        knowledge_base = json.loads(knowledge_base_message.content)        
+    def invoke(self, state, prompt_template, required_variables, user_content):
+        # Extract required variables from state
+        variables = {}
+        for var in required_variables:
+            content = next((msg.content for msg in state["messages"] if msg.role == var), None)
+            if content is None:
+                raise ValueError(f"Missing required data: {var}")
+            variables[var] = json.loads(content)
 
-        messages = [
-            {"role": "system", "content": analysis_node2_prompt.format(
-                text=preprocessed_data['text'],
-                analysis_results=json.dumps(analysis_node1_results, indent=2),
-                knowledge_base=json.dumps(knowledge_base,indent=2)
-            )},
-            {"role": "user", "content": "Please provide your analysis."}
-        ]
+        # Prepare the variables for the prompt template
+        prompt_variables = {}
 
-        llm = self.get_llm()
-        ai_msg = llm.invoke(messages)
+        # Handle all variables
+        for var, content in variables.items():
+            if var == 'preprocessing' and 'text' in content:
+                prompt_variables['text'] = content['text']
+            elif var == 'knowledgeBase' and 'knowledge_base' in content:
+                prompt_variables['knowledge_base'] = content['knowledge_base']
+            elif var in ['analysis_node1', 'analysis_node2']:
+                if 'analysis_results' not in prompt_variables:
+                    prompt_variables['analysis_results'] = {}
+                prompt_variables['analysis_results'].update(content)
+            else:
+                prompt_variables[var] = content
 
-        # Store the result in the state
-        if "analysis_node2_response" not in state:
-            state["analysis_node2_response"] = []
-        state["analysis_node2_response"].append(
-            HumanMessage(role="system", content=ai_msg.content)
-        )
-        response=ai_msg.content
-        with open('D:/VentureInternship/AI Agent/ProjectK/response.txt','a') as file:
-            file.write(f"Analysis Node 2 response:\n{response}\n")
+        # Convert analysis_results to JSON string
+        if 'analysis_results' in prompt_variables:
+            prompt_variables['analysis_results'] = json.dumps(prompt_variables['analysis_results'], indent=2)
 
-        return {"analysis_node2_response": state["analysis_node2_response"]}
-    
-
-class FeedbackGenerationAgent(Agent):
-    def invoke(self, state):
-        # Correctly extract preprocessed data from state
-        preprocessed_data_message = state["preprocessed_data"][0]
-        preprocessed_data = json.loads(preprocessed_data_message.content)
-
-        # Correctly extract analysis_node1 results from state
-        analysis_node1_message = state["analysis_node1_response"][-1]
-        analysis_node1_results = json.loads(analysis_node1_message.content)
-
-        # Correctly extract analysis_node2 results from state
-        analysis_node2_message = state["analysis_node2_response"][-1]
-        analysis_node2_results = json.loads(analysis_node2_message.content)
-        
-        # Correctly extract knowledgeBase data from state
-        knowledge_base_message = state["knowledge_base"][0]
-        knowledge_base = json.loads(knowledge_base_message.content) 
-
-        messages = [
-            {"role": "system", "content": feedback_generation_prompt.format(
-                text=preprocessed_data['text'],
-                analysis_results=json.dumps({**analysis_node1_results, **analysis_node2_results}, indent=2),
-                knowledge_base=json.dumps(knowledge_base,indent=2)
-            )},
-            {"role": "user", "content": "Please provide your detailed feedback."}
-        ]
-
-        llm = self.get_llm()
-        ai_msg = llm.invoke(messages)
-
-        # Store the result in the state
-        if "feedback_response" not in state:
-            state["feedback_response"] = []
-        state["feedback_response"].append(
-            HumanMessage(role="system", content=ai_msg.content)
-        )
-        response=ai_msg.content
-        with open('D:/VentureInternship/AI Agent/ProjectK/response.txt','a') as file:
-            file.write(f"FeedBack Node response:\n{response}\n")
-        
-
-        return {"feedback_response": state["feedback_response"]}   
-    
-
-class ScoringAgent(Agent):
-    def invoke(self, state):
-        # Correctly extract analysis_node1 results from state
-        analysis_node1_message = state["analysis_node1_response"][-1]
-        analysis_node1_results = json.loads(analysis_node1_message.content)
-
-        # Correctly extract analysis_node2 results from state
-        analysis_node2_message = state["analysis_node2_response"][-1]
-        analysis_node2_results = json.loads(analysis_node2_message.content)
-        
-        # Correctly extract knowledgeBase data from state
-        knowledge_base_message = state["knowledge_base"][0]
-        knowledge_base = json.loads(knowledge_base_message.content) 
-
-        messages = [
-            {"role": "system", "content": scoring_prompt.format(
-                analysis_results=json.dumps({**analysis_node1_results, **analysis_node2_results}, indent=2),
-                knowledge_base=json.dumps(knowledge_base,indent=2)
-            )},
-            {"role": "user", "content": "Please provide the IELTS writing score breakdown."}
-        ]
-
-        llm = self.get_llm()
-        ai_msg = llm.invoke(messages)
-
-        # Store the result in the state
-        if "scoring_response" not in state:
-            state["scoring_response"] = []
-        state["scoring_response"].append(
-            HumanMessage(role="system", content=ai_msg.content)
-        )
-        response=ai_msg.content
-        with open('D:/VentureInternship/AI Agent/ProjectK/response.txt','a') as file:
-            file.write(f"Scoring Node response:\n{response}\n")
-        
-
-        return {"scoring_response": state["scoring_response"]}    
-    
-
-class ParaphrasingAgent(Agent):
-    def invoke(self, state):
+        # Format the prompt
         try:
-            # Correctly extract preprocessed data from state
-            preprocessed_data_message = state["preprocessed_data"][0]
-            preprocessed_data = json.loads(preprocessed_data_message.content)
+            system_content = prompt_template.format(**prompt_variables)
+        except KeyError as e:
+            raise KeyError(f"Missing key in prompt template: {e}. Available keys: {prompt_variables.keys()}")
 
-            # Correctly extract scoring results from state
-            scoring_message = state["scoring_response"][-1]
-            scoring_results = json.loads(scoring_message.content)
-            
-            # Correctly extract knowledgeBase data from state
-            knowledge_base_message = state["knowledge_base"][0]
-            knowledge_base = json.loads(knowledge_base_message.content) 
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content}
+        ]
 
-            messages = [
-                {"role": "system", "content": paraphrasing_prompt.format(
-                    text=preprocessed_data['text'],
-                    scores=json.dumps(scoring_results, indent=2),
-                    knowledge_base=json.dumps(knowledge_base,indent=2)
-                )},
-                {"role": "user", "content": "Please provide the improved, Band 8 level paraphrased version."}
-            ]
+        llm = self.get_llm()
+        ai_msg = llm.invoke(messages)
 
-            llm = self.get_llm()
-            ai_msg = llm.invoke(messages)
+        # Log the response
+        with open("D:/VentureInternship/AI Agent/ProjectK/response.txt", 'a') as file:
+            file.write(f'\n{self.role_name} response:{ai_msg.content}\n')
 
-            # Attempt to parse the response as JSON
-            try:
-                response_content = json.loads(ai_msg.content)
-            except json.JSONDecodeError:
-                # If parsing fails, use the raw text
-                response_content = {"raw_text": ai_msg.content}
+        # Update the state with the agent's response using the correct role name
+        state["messages"].append(
+            HumanMessage(role=self.role_name, content=ai_msg.content)
+        )
 
-            # Store the result in the state
-            if "paraphrased_response" not in state:
-                state["paraphrased_response"] = []
-            state["paraphrased_response"].append(
-                HumanMessage(role="system", content=json.dumps(response_content))
-            )
-
-            with open('D:/VentureInternship/AI Agent/ProjectK/response.txt','a') as file:
-                file.write(f"Paraphrasing Node response:\n{json.dumps(response_content, indent=2)}\n")
-
-            return {"paraphrased_response": state["paraphrased_response"]}
-
-        except Exception as e:
-            error_message = f"Error in ParaphrasingAgent: {str(e)}"
-            print("ERROR", error_message)
-            error_response = {"error": error_message}
-
-            if "paraphrased_response" not in state:
-                state["paraphrased_response"] = []
-            state["paraphrased_response"].append(
-                HumanMessage(role="system", content=json.dumps(error_response))
-            )
-
-            with open('D:/VentureInternship/AI Agent/ProjectK/response.txt','a') as file:
-                file.write(f"Paraphrasing Node error:\n{json.dumps(error_response, indent=2)}\n")
-
-            return {"paraphrased_response": state["paraphrased_response"]}
+        # Return the updated state
+        return {"messages": state["messages"]}

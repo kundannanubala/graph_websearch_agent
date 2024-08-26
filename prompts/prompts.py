@@ -181,7 +181,7 @@ Original text:
 {text}
 
 Current scores:
-{scores}
+{scoring}
 
 Knowledge Base:
 {knowledge_base}

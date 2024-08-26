@@ -1,0 +1,2 @@
+
+Knowledge Base Loader Error: Error loading knowledge base: [Errno 2] No such file or directory: 'knowledge_base.txt'
